@@ -1114,7 +1114,7 @@
           const header = document.querySelector("header");
           header.insertBefore(combinedProfileImage, header.firstChild);
 
-          const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?video=${urlPath}`;
+          const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?data=${urlPath}`;
           window.history.pushState({ path: newUrl }, "", newUrl);
 
           document.getElementById("uploadCountCard").style.display = "flex";

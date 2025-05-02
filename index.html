@@ -17,7 +17,7 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
     />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
-    <script src="https://code.highcharts.com/12.0.2/highcharts.js"></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
     <link
       rel="icon"
       href="https://api.communitrics.com/youtube/profile?channel=communitrics"
@@ -75,7 +75,7 @@
         --toggle-active-background: var(--accent-color);
         --toggle-active-color: #ffffff;
 
-        --font-family: "Inter", "Poppins", sans-serif;
+        --font-family: 'Inter', 'Poppins', sans-serif;
         --font-size-base: 16px;
         --font-size-lg: 1.25rem;
         --font-size-sm: 0.85rem;
@@ -84,7 +84,7 @@
         --font-weight-bold: 700;
       }
 
-      [data-theme="dark"] {
+      [data-theme='dark'] {
         --background-color: #121212;
         --card-background-color: #1e1e1e;
         --text-color: #e0e0e0;
@@ -270,8 +270,8 @@
         box-shadow: 0 4px 12px var(--hover-shadow-color);
       }
 
-      [data-theme="dark"] .theme-toggle,
-      [data-theme="dark"] .export-button {
+      [data-theme='dark'] .theme-toggle,
+      [data-theme='dark'] .export-button {
         background-color: var(--toggle-background);
         border: 1px solid var(--toggle-border);
       }
@@ -354,13 +354,13 @@
 
       .video-duration,
       .video-upload-date {
-        font-size: var(--font-size-base); 
+        font-size: var(--font-size-base);
         color: var(--muted-text-color);
       }
 
       .video-id,
       .last-updated {
-        font-size: var(--font-size-sm); 
+        font-size: var(--font-size-sm);
         color: var(--muted-text-color);
       }
 
@@ -769,92 +769,92 @@
     </div>
 
     <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        const apiEndpoint = "https://api.communitrics.com/videos/all";
+      document.addEventListener('DOMContentLoaded', () => {
+        const apiEndpoint = 'https://api.communitrics.com/videos/all';
         const combinedEndpoint =
-          "https://api.communitrics.com/combined-history";
+          'https://api.communitrics.com/combined-history';
         const mrbeast2Endpoint =
-          "https://api.communitrics.com/combined-history-mb2";
+          'https://api.communitrics.com/combined-history-mb2';
         const mrbeastphilanthropyEndpoint =
-          "https://api.communitrics.com/combined-history-mbphilanthropy";
+          'https://api.communitrics.com/combined-history-mbphilanthropy';
         const mrbeastGamingEndpoint =
-          "https://api.communitrics.com/combined-history-mbgaming";
+          'https://api.communitrics.com/combined-history-mbgaming';
         const mrbeastReactsEndpoint =
-          "https://api.communitrics.com/combined-history-mbreacts";
+          'https://api.communitrics.com/combined-history-mbreacts';
         const cocomelonEndpoint =
-          "https://api.communitrics.com/combined-history-cocomelon";
+          'https://api.communitrics.com/combined-history-cocomelon';
         const ronaldoEndpoint =
-          "https://api.communitrics.com/combined-history-ronaldo";
-        const searchInput = document.getElementById("searchInput");
-        const dropdownList = document.getElementById("dropdownList");
-        const exportButton = document.getElementById("exportButton");
-        const tableContainer = document.querySelector(".table-responsive");
+          'https://api.communitrics.com/combined-history-ronaldo';
+        const searchInput = document.getElementById('searchInput');
+        const dropdownList = document.getElementById('dropdownList');
+        const exportButton = document.getElementById('exportButton');
+        const tableContainer = document.querySelector('.table-responsive');
         let videoChart;
         let allData = {};
-        let currentVideoId = "mrbeast";
+        let currentVideoId = 'mrbeast';
         let selectedSeriesIndex = 0;
 
-        const storedTheme = localStorage.getItem("theme") || "dark";
-        document.body.setAttribute("data-theme", storedTheme);
+        const storedTheme = localStorage.getItem('theme') || 'dark';
+        document.body.setAttribute('data-theme', storedTheme);
 
-        const themeToggle = document.getElementById("themeToggle");
-        const themeIcon = document.getElementById("themeIcon");
-        const exportIcon = document.getElementById("exportIcon");
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const exportIcon = document.getElementById('exportIcon');
 
         function updateIconColors(theme) {
-          if (theme === "light") {
+          if (theme === 'light') {
             themeIcon.src =
-              "https://img.icons8.com/material-outlined/24/000000/contrast.png";
+              'https://img.icons8.com/material-outlined/24/000000/contrast.png';
             exportIcon.src =
-              "https://img.icons8.com/material-outlined/24/000000/download.png";
+              'https://img.icons8.com/material-outlined/24/000000/download.png';
           } else {
             themeIcon.src =
-              "https://img.icons8.com/material-outlined/24/ffffff/contrast.png";
+              'https://img.icons8.com/material-outlined/24/ffffff/contrast.png';
             exportIcon.src =
-              "https://img.icons8.com/material-outlined/24/ffffff/download.png";
+              'https://img.icons8.com/material-outlined/24/ffffff/download.png';
           }
         }
 
-        document.body.setAttribute("data-theme", storedTheme);
+        document.body.setAttribute('data-theme', storedTheme);
 
         updateIconColors(storedTheme);
 
-        themeToggle.addEventListener("click", () => {
-          const currentTheme = document.body.getAttribute("data-theme");
-          const newTheme = currentTheme === "light" ? "dark" : "light";
-          document.body.setAttribute("data-theme", newTheme);
-          localStorage.setItem("theme", newTheme);
+        themeToggle.addEventListener('click', () => {
+          const currentTheme = document.body.getAttribute('data-theme');
+          const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+          document.body.setAttribute('data-theme', newTheme);
+          localStorage.setItem('theme', newTheme);
 
           updateIconColors(newTheme);
         });
 
-        searchInput.addEventListener("focus", () => {
-          dropdownList.classList.add("show");
+        searchInput.addEventListener('focus', () => {
+          dropdownList.classList.add('show');
         });
 
-        searchInput.addEventListener("input", (e) => {
+        searchInput.addEventListener('input', e => {
           const searchTerm = e.target.value.toLowerCase();
-          document.querySelectorAll(".dropdown-list-item").forEach((item) => {
+          document.querySelectorAll('.dropdown-list-item').forEach(item => {
             const text = item.textContent.toLowerCase();
-            item.style.display = text.includes(searchTerm) ? "" : "none";
+            item.style.display = text.includes(searchTerm) ? '' : 'none';
           });
         });
 
-        document.addEventListener("click", (e) => {
-          if (!e.target.closest(".search-bar")) {
-            dropdownList.classList.remove("show");
+        document.addEventListener('click', e => {
+          if (!e.target.closest('.search-bar')) {
+            dropdownList.classList.remove('show');
           }
         });
 
-        tableContainer.addEventListener("wheel", function (e) {
+        tableContainer.addEventListener('wheel', function (e) {
           if (tableContainer.scrollHeight > tableContainer.clientHeight) {
             e.preventDefault();
             tableContainer.scrollTop += e.deltaY;
           }
         });
 
-        const combinedOption = document.createElement("div");
-        combinedOption.classList.add("dropdown-list-item", "bold");
+        const combinedOption = document.createElement('div');
+        combinedOption.classList.add('dropdown-list-item', 'bold');
         combinedOption.innerHTML = `
     <div style="display: flex; align-items: center;">
       <img src="https://api.communitrics.com/youtube/profile?channel=mrbeast" alt="MrBeast" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
@@ -863,18 +863,18 @@
   `;
         dropdownList.appendChild(combinedOption);
 
-        combinedOption.addEventListener("click", () => {
-          searchInput.value = "MrBeast";
-          dropdownList.classList.remove("show");
+        combinedOption.addEventListener('click', () => {
+          searchInput.value = 'MrBeast';
+          dropdownList.classList.remove('show');
           fetchCombinedStats(
             combinedEndpoint,
-            "https://api.communitrics.com/youtube/profile?channel=mrbeast",
-            "mrbeast"
+            'https://api.communitrics.com/youtube/profile?channel=mrbeast',
+            'mrbeast'
           );
         });
 
-        const mrbeast2Option = document.createElement("div");
-        mrbeast2Option.classList.add("dropdown-list-item", "bold");
+        const mrbeast2Option = document.createElement('div');
+        mrbeast2Option.classList.add('dropdown-list-item', 'bold');
         mrbeast2Option.innerHTML = `
     <div style="display: flex; align-items: center;">
       <img src="https://api.communitrics.com/youtube/profile?channel=mrbeast2" alt="MrBeast 2" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
@@ -883,18 +883,18 @@
   `;
         dropdownList.appendChild(mrbeast2Option);
 
-        mrbeast2Option.addEventListener("click", () => {
-          searchInput.value = "MrBeast 2";
-          dropdownList.classList.remove("show");
+        mrbeast2Option.addEventListener('click', () => {
+          searchInput.value = 'MrBeast 2';
+          dropdownList.classList.remove('show');
           fetchCombinedStats(
             mrbeast2Endpoint,
-            "https://api.communitrics.com/youtube/profile?channel=mrbeast2",
-            "mrbeast2"
+            'https://api.communitrics.com/youtube/profile?channel=mrbeast2',
+            'mrbeast2'
           );
         });
 
-        const mrbeastGamingOption = document.createElement("div");
-        mrbeastGamingOption.classList.add("dropdown-list-item", "bold");
+        const mrbeastGamingOption = document.createElement('div');
+        mrbeastGamingOption.classList.add('dropdown-list-item', 'bold');
         mrbeastGamingOption.innerHTML = `
     <div style="display: flex; align-items: center;">
       <img src="https://api.communitrics.com/youtube/profile?channel=mrbeastgaming" alt="MrBeast Gaming" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
@@ -903,18 +903,18 @@
   `;
         dropdownList.appendChild(mrbeastGamingOption);
 
-        mrbeastGamingOption.addEventListener("click", () => {
-          searchInput.value = "MrBeast Gaming";
-          dropdownList.classList.remove("show");
+        mrbeastGamingOption.addEventListener('click', () => {
+          searchInput.value = 'MrBeast Gaming';
+          dropdownList.classList.remove('show');
           fetchCombinedStats(
             mrbeastGamingEndpoint,
-            "https://api.communitrics.com/youtube/profile?channel=mrbeastgaming",
-            "mrbeastgaming"
+            'https://api.communitrics.com/youtube/profile?channel=mrbeastgaming',
+            'mrbeastgaming'
           );
         });
 
-        const mrbeastReactsOption = document.createElement("div");
-        mrbeastReactsOption.classList.add("dropdown-list-item", "bold");
+        const mrbeastReactsOption = document.createElement('div');
+        mrbeastReactsOption.classList.add('dropdown-list-item', 'bold');
         mrbeastReactsOption.innerHTML = `
     <div style="display: flex; align-items: center;">
       <img src="https://api.communitrics.com/youtube/profile?channel=mrbeastreacts" alt="Beast Reacts" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
@@ -923,18 +923,18 @@
   `;
         dropdownList.appendChild(mrbeastReactsOption);
 
-        mrbeastReactsOption.addEventListener("click", () => {
-          searchInput.value = "Beast Reacts";
-          dropdownList.classList.remove("show");
+        mrbeastReactsOption.addEventListener('click', () => {
+          searchInput.value = 'Beast Reacts';
+          dropdownList.classList.remove('show');
           fetchCombinedStats(
             mrbeastReactsEndpoint,
-            "https://api.communitrics.com/youtube/profile?channel=mrbeastreacts",
-            "mrbeastreacts"
+            'https://api.communitrics.com/youtube/profile?channel=mrbeastreacts',
+            'mrbeastreacts'
           );
         });
 
-        const mrbeastphilanthropyOption = document.createElement("div");
-        mrbeastphilanthropyOption.classList.add("dropdown-list-item", "bold");
+        const mrbeastphilanthropyOption = document.createElement('div');
+        mrbeastphilanthropyOption.classList.add('dropdown-list-item', 'bold');
         mrbeastphilanthropyOption.innerHTML = `
     <div style="display: flex; align-items: center;">
       <img src="https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy" alt="Beast Philanthropy" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
@@ -943,18 +943,18 @@
   `;
         dropdownList.appendChild(mrbeastphilanthropyOption);
 
-        mrbeastphilanthropyOption.addEventListener("click", () => {
-          searchInput.value = "Beast Philanthropy";
-          dropdownList.classList.remove("show");
+        mrbeastphilanthropyOption.addEventListener('click', () => {
+          searchInput.value = 'Beast Philanthropy';
+          dropdownList.classList.remove('show');
           fetchCombinedStats(
             mrbeastphilanthropyEndpoint,
-            "https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy",
-            "mrbeastphilanthropy"
+            'https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy',
+            'mrbeastphilanthropy'
           );
         });
 
-        const cocomelonOption = document.createElement("div");
-        cocomelonOption.classList.add("dropdown-list-item", "bold");
+        const cocomelonOption = document.createElement('div');
+        cocomelonOption.classList.add('dropdown-list-item', 'bold');
         cocomelonOption.innerHTML = `
     <div style="display: flex; align-items: center;">
       <img src="https://api.communitrics.com/youtube/profile?channel=cocomelon" alt="Cocomelon - Nursery Rhymes" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
@@ -963,18 +963,18 @@
   `;
         dropdownList.appendChild(cocomelonOption);
 
-        cocomelonOption.addEventListener("click", () => {
-          searchInput.value = "Cocomelon - Nursery Rhymes";
-          dropdownList.classList.remove("show");
+        cocomelonOption.addEventListener('click', () => {
+          searchInput.value = 'Cocomelon - Nursery Rhymes';
+          dropdownList.classList.remove('show');
           fetchCombinedStats(
             cocomelonEndpoint,
-            "https://api.communitrics.com/youtube/profile?channel=cocomelon",
-            "cocomelon"
+            'https://api.communitrics.com/youtube/profile?channel=cocomelon',
+            'cocomelon'
           );
         });
 
-        const ronaldoOption = document.createElement("div");
-        ronaldoOption.classList.add("dropdown-list-item", "bold");
+        const ronaldoOption = document.createElement('div');
+        ronaldoOption.classList.add('dropdown-list-item', 'bold');
         ronaldoOption.innerHTML = `
     <div style="display: flex; align-items: center;">
       <img src="https://api.communitrics.com/youtube/profile?channel=cristiano" alt="UR · Cristiano" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
@@ -983,102 +983,102 @@
   `;
         dropdownList.appendChild(ronaldoOption);
 
-        ronaldoOption.addEventListener("click", () => {
-          searchInput.value = "UR · Cristiano";
-          dropdownList.classList.remove("show");
+        ronaldoOption.addEventListener('click', () => {
+          searchInput.value = 'UR · Cristiano';
+          dropdownList.classList.remove('show');
           fetchCombinedStats(
             ronaldoEndpoint,
-            "https://api.communitrics.com/youtube/profile?channel=cristiano",
-            "ronaldo"
+            'https://api.communitrics.com/youtube/profile?channel=cristiano',
+            'ronaldo'
           );
         });
 
         const urlParams = new URLSearchParams(window.location.search);
-        const videoIdFromUrl = urlParams.get("data");
+        const videoIdFromUrl = urlParams.get('data');
 
         fetch(apiEndpoint)
-          .then((response) => response.json())
-          .then((data) => {
+          .then(response => response.json())
+          .then(data => {
             const videos = data.videos;
 
             function addCommasToTitle(title) {
-              return title.replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1,");
+              return title.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,');
             }
 
-            videos.forEach((video) => {
-              const item = document.createElement("div");
-              item.classList.add("dropdown-list-item");
+            videos.forEach(video => {
+              const item = document.createElement('div');
+              item.classList.add('dropdown-list-item');
               item.textContent = addCommasToTitle(video.title);
               item.dataset.videoId = video.videoId;
               dropdownList.appendChild(item);
 
-              item.addEventListener("click", (e) => {
+              item.addEventListener('click', e => {
                 const selectedVideoId = e.currentTarget.dataset.videoId;
                 searchInput.value = e.currentTarget.textContent;
-                dropdownList.classList.remove("show");
+                dropdownList.classList.remove('show');
                 fetchVideoStats(selectedVideoId);
               });
             });
 
-            if (videoIdFromUrl === "mrbeast") {
-              searchInput.value = "MrBeast";
+            if (videoIdFromUrl === 'mrbeast') {
+              searchInput.value = 'MrBeast';
               fetchCombinedStats(
                 combinedEndpoint,
-                "https://api.communitrics.com/youtube/profile?channel=mrbeast",
-                "mrbeast"
+                'https://api.communitrics.com/youtube/profile?channel=mrbeast',
+                'mrbeast'
               );
-            } else if (videoIdFromUrl === "mrbeast2") {
-              searchInput.value = "MrBeast 2";
+            } else if (videoIdFromUrl === 'mrbeast2') {
+              searchInput.value = 'MrBeast 2';
               fetchCombinedStats(
                 mrbeast2Endpoint,
-                "https://api.communitrics.com/youtube/profile?channel=mrbeast2",
-                "mrbeast2"
+                'https://api.communitrics.com/youtube/profile?channel=mrbeast2',
+                'mrbeast2'
               );
-            } else if (videoIdFromUrl === "mrbeastgaming") {
-              searchInput.value = "MrBeast Gaming";
+            } else if (videoIdFromUrl === 'mrbeastgaming') {
+              searchInput.value = 'MrBeast Gaming';
               fetchCombinedStats(
                 mrbeastGamingEndpoint,
-                "https://api.communitrics.com/youtube/profile?channel=mrbeastgaming",
-                "mrbeastgaming"
+                'https://api.communitrics.com/youtube/profile?channel=mrbeastgaming',
+                'mrbeastgaming'
               );
-            } else if (videoIdFromUrl === "mrbeastreacts") {
-              searchInput.value = "Beast Reacts";
+            } else if (videoIdFromUrl === 'mrbeastreacts') {
+              searchInput.value = 'Beast Reacts';
               fetchCombinedStats(
                 mrbeastReactsEndpoint,
-                "https://api.communitrics.com/youtube/profile?channel=mrbeastreacts",
-                "mrbeastreacts"
+                'https://api.communitrics.com/youtube/profile?channel=mrbeastreacts',
+                'mrbeastreacts'
               );
-            } else if (videoIdFromUrl === "mrbeastphilanthropy") {
-              searchInput.value = "Beast Philanthropy";
+            } else if (videoIdFromUrl === 'mrbeastphilanthropy') {
+              searchInput.value = 'Beast Philanthropy';
               fetchCombinedStats(
                 mrbeastphilanthropyEndpoint,
-                "https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy",
-                "mrbeastphilanthropy"
+                'https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy',
+                'mrbeastphilanthropy'
               );
-            } else if (videoIdFromUrl === "cocomelon") {
-              searchInput.value = "Cocomelon - Nursery Rhymes";
+            } else if (videoIdFromUrl === 'cocomelon') {
+              searchInput.value = 'Cocomelon - Nursery Rhymes';
               fetchCombinedStats(
                 cocomelonEndpoint,
-                "https://api.communitrics.com/youtube/profile?channel=cocomelon",
-                "cocomelon"
+                'https://api.communitrics.com/youtube/profile?channel=cocomelon',
+                'cocomelon'
               );
-            } else if (videoIdFromUrl === "ronaldo") {
-              searchInput.value = "UR · Cristiano";
+            } else if (videoIdFromUrl === 'ronaldo') {
+              searchInput.value = 'UR · Cristiano';
               fetchCombinedStats(
                 ronaldoEndpoint,
-                "https://api.communitrics.com/youtube/profile?channel=cristiano",
-                "ronaldo"
+                'https://api.communitrics.com/youtube/profile?channel=cristiano',
+                'ronaldo'
               );
             } else if (videoIdFromUrl) {
               const matchingVideo = videos.find(
-                (video) => video.videoId === videoIdFromUrl
+                video => video.videoId === videoIdFromUrl
               );
               if (matchingVideo) {
                 searchInput.value = addCommasToTitle(matchingVideo.title);
                 fetchVideoStats(matchingVideo.videoId);
               } else {
                 console.error(
-                  "Video ID from URL not found in the list of videos."
+                  'Video ID from URL not found in the list of videos.'
                 );
               }
             } else if (videos.length > 0) {
@@ -1092,47 +1092,49 @@
 
         function fetchCombinedStats(endpoint, profileImageUrl, urlPath) {
           currentVideoId = urlPath;
-          document.getElementById("videoInfoCard").style.display = "none";
-          document.querySelector("header h1").textContent = "Channel Analytics";
+          document.getElementById('videoInfoCard').style.display = 'none';
+          document.querySelector('header h1').textContent = 'Channel Analytics';
 
           const existingProfileImage = document.querySelector(
-            "header img.profile-image"
+            'header img.profile-image'
           );
           if (existingProfileImage) {
             existingProfileImage.remove();
           }
 
-          const combinedProfileImage = document.createElement("img");
+          const combinedProfileImage = document.createElement('img');
           combinedProfileImage.src = profileImageUrl;
-          combinedProfileImage.alt = "Profile Image";
-          combinedProfileImage.style.width = "60px";
-          combinedProfileImage.style.height = "60px";
-          combinedProfileImage.style.borderRadius = "50%";
-          combinedProfileImage.style.marginRight = "-150px";
-          combinedProfileImage.classList.add("profile-image");
+          combinedProfileImage.alt = 'Profile Image';
+          combinedProfileImage.style.width = '60px';
+          combinedProfileImage.style.height = '60px';
+          combinedProfileImage.style.borderRadius = '50%';
+          combinedProfileImage.style.marginRight = '-150px';
+          combinedProfileImage.classList.add('profile-image');
 
-          const header = document.querySelector("header");
+          const header = document.querySelector('header');
           header.insertBefore(combinedProfileImage, header.firstChild);
 
           const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?data=${urlPath}`;
-          window.history.pushState({ path: newUrl }, "", newUrl);
+          window.history.pushState({ path: newUrl }, '', newUrl);
 
-          document.getElementById("uploadCountCard").style.display = "flex";
+          document.getElementById('uploadCountCard').style.display = 'flex';
 
           fetch(endpoint)
-            .then((response) => response.json())
-            .then((combinedData) => {
+            .then(response => response.json())
+            .then(combinedData => {
               const timestamps = combinedData.map(
-                (entry) => new Date(entry.time)
+                entry => new Date(entry.time)
               );
-              const views = combinedData.map((entry) => entry.views);
-              const likes = combinedData.map((entry) => entry.likes);
-              const comments = combinedData.map((entry) => entry.comments);
-              const uploads = combinedData.map((entry) => entry.uploadCount);
+              const views = combinedData.map(entry => entry.views);
+              const likes = combinedData.map(entry => entry.likes);
+              const comments = combinedData.map(entry => entry.comments);
+              const uploads = combinedData.map(entry => entry.uploadCount);
 
               allData = { timestamps, views, likes, comments, uploads };
 
-              drawChart();
+              setTimeout(() => {
+                drawChart();
+              }, 100);
               updateStats(
                 allData.views,
                 allData.likes,
@@ -1145,8 +1147,8 @@
 
               createDailyTable(dailyData, currentDayData);
 
-              document.getElementById("dailyStatsTable").style.display =
-                "block";
+              document.getElementById('dailyStatsTable').style.display =
+                'block';
             });
         }
 
@@ -1158,16 +1160,16 @@
           data.forEach((entry, index) => {
             const entryDate = new Date(entry.time);
 
-            const entryDateString = entryDate.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              timeZone: "America/New_York",
+            const entryDateString = entryDate.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              timeZone: 'America/New_York',
             });
 
             const entryEasternTime = new Date(
-              entryDate.toLocaleString("en-US", {
-                timeZone: "America/New_York",
+              entryDate.toLocaleString('en-US', {
+                timeZone: 'America/New_York',
               })
             );
 
@@ -1186,8 +1188,8 @@
             } else {
               const closestDate = new Date(closestToMidnight.time);
               const closestEasternTime = new Date(
-                closestDate.toLocaleString("en-US", {
-                  timeZone: "America/New_York",
+                closestDate.toLocaleString('en-US', {
+                  timeZone: 'America/New_York',
                 })
               );
 
@@ -1219,18 +1221,18 @@
           let closestToMidnight = null;
           let firstEntryOfDay = null;
 
-          data.forEach((entry) => {
+          data.forEach(entry => {
             const entryDate = new Date(entry.timestamp);
-            const entryDateString = entryDate.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              timeZone: "America/New_York",
+            const entryDateString = entryDate.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              timeZone: 'America/New_York',
             });
 
             const entryEasternTime = new Date(
-              entryDate.toLocaleString("en-US", {
-                timeZone: "America/New_York",
+              entryDate.toLocaleString('en-US', {
+                timeZone: 'America/New_York',
               })
             );
 
@@ -1254,8 +1256,8 @@
             } else {
               const closestDate = new Date(closestToMidnight.timestamp);
               const closestEasternTime = new Date(
-                closestDate.toLocaleString("en-US", {
-                  timeZone: "America/New_York",
+                closestDate.toLocaleString('en-US', {
+                  timeZone: 'America/New_York',
                 })
               );
 
@@ -1283,12 +1285,12 @@
         }
 
         function createDailyTableForVideo(dailyData, currentDayData) {
-          const tableBody = document.getElementById("dailyStatsBody");
-          tableBody.innerHTML = "";
+          const tableBody = document.getElementById('dailyStatsBody');
+          tableBody.innerHTML = '';
 
           const calculateChange = (current, previous) => {
             const change = current - previous;
-            const arrow = change < 0 ? "↓" : "";
+            const arrow = change < 0 ? '↓' : '';
             const changeString =
               change >= 0
                 ? `+${change.toLocaleString()}`
@@ -1297,26 +1299,26 @@
           };
 
           const determineClass = (currentChange, previousChange) => {
-            return currentChange > previousChange ? "positive" : "negative";
+            return currentChange > previousChange ? 'positive' : 'negative';
           };
 
           if (currentDayData) {
-            const currentRow = document.createElement("tr");
+            const currentRow = document.createElement('tr');
             const currentDate = new Date(currentDayData.timestamp);
 
-            const timeString = currentDate.toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
+            const timeString = currentDate.toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
               hour12: false,
-              timeZone: "America/New_York",
+              timeZone: 'America/New_York',
             });
 
-            const dateString = currentDate.toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              timeZone: "America/New_York",
+            const dateString = currentDate.toLocaleDateString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              timeZone: 'America/New_York',
             });
 
             const previousDayData = dailyData[dailyData.length - 1];
@@ -1367,30 +1369,30 @@
 
           for (let index = dailyData.length - 1; index >= 0; index--) {
             const entry = dailyData[index];
-            const row = document.createElement("tr");
+            const row = document.createElement('tr');
             const date = new Date(entry.timestamp);
 
             date.setDate(date.getDate() - 1);
-            const dateString = date.toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              timeZone: "America/New_York",
+            const dateString = date.toLocaleDateString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              timeZone: 'America/New_York',
             });
 
             const viewsChange =
               index > 0
                 ? calculateChange(entry.views, dailyData[index - 1].views)
-                : "";
+                : '';
             const likesChange =
               index > 0
                 ? calculateChange(entry.likes, dailyData[index - 1].likes)
-                : "";
+                : '';
             const commentsChange =
               index > 0
                 ? calculateChange(entry.comments, dailyData[index - 1].comments)
-                : "";
+                : '';
 
             const viewsClass =
               index > 1
@@ -1398,14 +1400,14 @@
                     entry.views - dailyData[index - 1].views,
                     dailyData[index - 1].views - dailyData[index - 2].views
                   )
-                : "";
+                : '';
             const likesClass =
               index > 1
                 ? determineClass(
                     entry.likes - dailyData[index - 1].likes,
                     dailyData[index - 1].likes - dailyData[index - 2].likes
                   )
-                : "";
+                : '';
             const commentsClass =
               index > 1
                 ? determineClass(
@@ -1413,7 +1415,7 @@
                     dailyData[index - 1].comments -
                       dailyData[index - 2].comments
                   )
-                : "";
+                : '';
 
             row.innerHTML = `
       <td>${dateString}</td>
@@ -1433,12 +1435,12 @@
         }
 
         function createDailyTable(dailyData, currentDayData) {
-          const tableBody = document.getElementById("dailyStatsBody");
-          tableBody.innerHTML = "";
+          const tableBody = document.getElementById('dailyStatsBody');
+          tableBody.innerHTML = '';
 
           const calculateChange = (current, previous) => {
             const change = current - previous;
-            const arrow = change < 0 ? "↓" : "";
+            const arrow = change < 0 ? '↓' : '';
             const changeString =
               change >= 0
                 ? `+${change.toLocaleString()}`
@@ -1447,26 +1449,26 @@
           };
 
           const determineClass = (currentChange, previousChange) => {
-            return currentChange > previousChange ? "positive" : "negative";
+            return currentChange > previousChange ? 'positive' : 'negative';
           };
 
           if (currentDayData) {
-            const currentRow = document.createElement("tr");
+            const currentRow = document.createElement('tr');
             const currentDate = new Date(currentDayData.time);
 
-            const timeString = currentDate.toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
+            const timeString = currentDate.toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
               hour12: false,
-              timeZone: "America/New_York",
+              timeZone: 'America/New_York',
             });
 
-            const dateString = currentDate.toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              timeZone: "America/New_York",
+            const dateString = currentDate.toLocaleDateString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              timeZone: 'America/New_York',
             });
 
             const previousDayData = dailyData[dailyData.length - 1];
@@ -1517,30 +1519,30 @@
 
           for (let index = dailyData.length - 1; index >= 0; index--) {
             const entry = dailyData[index];
-            const row = document.createElement("tr");
+            const row = document.createElement('tr');
             const date = new Date(entry.time);
 
             date.setDate(date.getDate() - 1);
-            const dateString = date.toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              timeZone: "America/New_York",
+            const dateString = date.toLocaleDateString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              timeZone: 'America/New_York',
             });
 
             const viewsChange =
               index > 0
                 ? calculateChange(entry.views, dailyData[index - 1].views)
-                : "";
+                : '';
             const likesChange =
               index > 0
                 ? calculateChange(entry.likes, dailyData[index - 1].likes)
-                : "";
+                : '';
             const commentsChange =
               index > 0
                 ? calculateChange(entry.comments, dailyData[index - 1].comments)
-                : "";
+                : '';
 
             const viewsClass =
               index > 1
@@ -1548,14 +1550,14 @@
                     entry.views - dailyData[index - 1].views,
                     dailyData[index - 1].views - dailyData[index - 2].views
                   )
-                : "";
+                : '';
             const likesClass =
               index > 1
                 ? determineClass(
                     entry.likes - dailyData[index - 1].likes,
                     dailyData[index - 1].likes - dailyData[index - 2].likes
                   )
-                : "";
+                : '';
             const commentsClass =
               index > 1
                 ? determineClass(
@@ -1563,7 +1565,7 @@
                     dailyData[index - 1].comments -
                       dailyData[index - 2].comments
                   )
-                : "";
+                : '';
 
             row.innerHTML = `
       <td>${dateString}</td>
@@ -1584,22 +1586,22 @@
 
         function fetchVideoStats(videoId) {
           function addCommasToTitle(title) {
-            return title.replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1,");
+            return title.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,');
           }
 
           currentVideoId = videoId;
           const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?data=${videoId}`;
-          window.history.pushState({ path: newUrl }, "", newUrl);
+          window.history.pushState({ path: newUrl }, '', newUrl);
 
-          document.getElementById("uploadCountCard").style.display = "none";
-          document.querySelector("header h1").textContent = "Video Analytics";
+          document.getElementById('uploadCountCard').style.display = 'none';
+          document.querySelector('header h1').textContent = 'Video Analytics';
 
           if (selectedSeriesIndex === 3) {
             selectedSeriesIndex = 0;
           }
 
           const existingProfileImage = document.querySelector(
-            "header img.profile-image"
+            'header img.profile-image'
           );
           if (existingProfileImage) {
             existingProfileImage.remove();
@@ -1608,14 +1610,14 @@
           const videoStatsEndpoint = `https://api.communitrics.com/videostats/${videoId}`;
 
           fetch(videoStatsEndpoint)
-            .then((response) => response.json())
-            .then((video) => {
-              const videoInfoCard = document.getElementById("videoInfoCard");
+            .then(response => response.json())
+            .then(video => {
+              const videoInfoCard = document.getElementById('videoInfoCard');
               const thumbnailElement =
-                document.getElementById("videoThumbnail");
-              const videoLinkElement = document.getElementById("videoLink");
-              const uploadDateElement = document.getElementById("uploadDate");
-              const durationElement = document.getElementById("videoDuration");
+                document.getElementById('videoThumbnail');
+              const videoLinkElement = document.getElementById('videoLink');
+              const uploadDateElement = document.getElementById('uploadDate');
+              const durationElement = document.getElementById('videoDuration');
 
               thumbnailElement.src = video.thumbnail;
               videoLinkElement.href = `https://www.youtube.com/watch?v=${video.videoId}`;
@@ -1625,20 +1627,20 @@
               uploadDateElement.textContent = `Uploaded on: ${uploadDate.toLocaleDateString()} at ${uploadDate.toLocaleTimeString()}`;
 
               const lastUpdatedDate = new Date(video.lastUpdated);
-              const lastUpdatedSpan = document.createElement("span");
-              lastUpdatedSpan.classList.add("last-updated");
+              const lastUpdatedSpan = document.createElement('span');
+              lastUpdatedSpan.classList.add('last-updated');
               lastUpdatedSpan.textContent = ` (Stats last updated: ${lastUpdatedDate.toLocaleDateString()} at ${lastUpdatedDate.toLocaleTimeString()})`;
               uploadDateElement.appendChild(lastUpdatedSpan);
 
               durationElement.textContent = `Duration: ${video.stats[0].duration}`;
-              const videoIdSpan = document.createElement("span");
-              videoIdSpan.classList.add("video-id");
+              const videoIdSpan = document.createElement('span');
+              videoIdSpan.classList.add('video-id');
               videoIdSpan.textContent = ` (Video ID: ${video.videoId})`;
               durationElement.appendChild(videoIdSpan);
 
-              videoInfoCard.style.display = "flex";
+              videoInfoCard.style.display = 'flex';
               const filteredStats = video.stats.filter(
-                (stat) =>
+                stat =>
                   stat.views != null &&
                   stat.views !== 0 &&
                   stat.likes != null &&
@@ -1648,36 +1650,50 @@
               );
 
               const timestamps = filteredStats.map(
-                (stat) => new Date(stat.timestamp)
+                stat => new Date(stat.timestamp)
               );
-              const views = filteredStats.map((stat) => Math.round(stat.views));
-              const likes = filteredStats.map((stat) => Math.round(stat.likes));
-              const comments = filteredStats.map((stat) =>
+              const views = filteredStats.map(stat => Math.round(stat.views));
+              const likes = filteredStats.map(stat => Math.round(stat.likes));
+              const comments = filteredStats.map(stat =>
                 Math.round(stat.comments)
               );
 
               allData = { timestamps, views, likes, comments };
-              drawChart();
+              setTimeout(() => {
+                drawChart();
+              }, 100);
               updateStats(views, likes, comments);
 
               const dailyData = processDailyDataForVideo(filteredStats);
               const currentDayData = filteredStats[filteredStats.length - 1];
 
               createDailyTableForVideo(dailyData, currentDayData);
-              document.getElementById("dailyStatsTable").style.display =
-                "block";
+              document.getElementById('dailyStatsTable').style.display =
+                'block';
             });
         }
 
         function drawChart() {
-          const MAX_POINTS = 3000;
+          if (
+            !allData ||
+            !allData.timestamps ||
+            allData.timestamps.length === 0 ||
+            !allData.views ||
+            allData.views.length === 0
+          ) {
+            console.error('Invalid data for chart rendering');
+            document.getElementById('videoChart').innerHTML =
+              "<div style='text-align:center;padding:20px;'>Unable to load chart data. Please try again.</div>";
+            return;
+          }
+          const MAX_POINTS = window.innerWidth < 768 ? 1000 : 3000;
 
           if (
             !allData ||
             !allData.timestamps ||
             allData.timestamps.length === 0
           ) {
-            console.error("No data available to draw the chart.");
+            console.error('No data available to draw the chart.');
             return;
           }
 
@@ -1689,10 +1705,10 @@
             const length = timestamps.length;
 
             function convertToEasternTime(timestamp) {
-              const utcDate = new Date(Date.parse(timestamp + "Z"));
+              const utcDate = new Date(Date.parse(timestamp + 'Z'));
               return new Date(
-                utcDate.toLocaleString("en-US", {
-                  timeZone: "America/New_York",
+                utcDate.toLocaleString('en-US', {
+                  timeZone: 'America/New_York',
                 })
               ).getTime();
             }
@@ -1713,7 +1729,7 @@
           }
 
           function getVisibleDataRange(series, min, max) {
-            const visiblePoints = series.data.filter((point) => {
+            const visiblePoints = series.data.filter(point => {
               const x = point[0];
               return x >= min && x <= max;
             });
@@ -1722,7 +1738,7 @@
               return { min: series.dataMin, max: series.dataMax };
             }
 
-            const yValues = visiblePoints.map((point) => point[1]);
+            const yValues = visiblePoints.map(point => point[1]);
             const visibleMin = Math.min(...yValues);
             const visibleMax = Math.max(...yValues);
             const padding = (visibleMax - visibleMin) * 0.1;
@@ -1733,7 +1749,7 @@
           }
 
           function getInitialDataRange(data) {
-            const yValues = data.map((point) => point[1]);
+            const yValues = data.map(point => point[1]);
             const min = Math.min(...yValues);
             const max = Math.max(...yValues);
             const padding = (max - min) * 0.1;
@@ -1745,7 +1761,7 @@
 
           const seriesData = [
             {
-              name: "Views",
+              name: 'Views',
               data: downsampleData(allData.timestamps, allData.views),
               color: {
                 linearGradient: {
@@ -1755,8 +1771,8 @@
                   y2: 1,
                 },
                 stops: [
-                  [0, "#ef4444"],
-                  [1, "rgba(239, 68, 68, 0.3)"],
+                  [0, '#ef4444'],
+                  [1, 'rgba(239, 68, 68, 0.3)'],
                 ],
               },
               visible: selectedSeriesIndex === 0,
@@ -1766,7 +1782,7 @@
               lineWidth: 3,
             },
             {
-              name: "Likes",
+              name: 'Likes',
               data: downsampleData(allData.timestamps, allData.likes),
               color: {
                 linearGradient: {
@@ -1776,8 +1792,8 @@
                   y2: 1,
                 },
                 stops: [
-                  [0, "#1976d2"],
-                  [1, "rgba(25, 118, 210, 0.3)"],
+                  [0, '#1976d2'],
+                  [1, 'rgba(25, 118, 210, 0.3)'],
                 ],
               },
               visible: selectedSeriesIndex === 1,
@@ -1787,7 +1803,7 @@
               lineWidth: 3,
             },
             {
-              name: "Comments",
+              name: 'Comments',
               data: downsampleData(allData.timestamps, allData.comments),
               color: {
                 linearGradient: {
@@ -1797,8 +1813,8 @@
                   y2: 1,
                 },
                 stops: [
-                  [0, "#0d9488"],
-                  [1, "rgba(13, 148, 136, 0.3)"],
+                  [0, '#0d9488'],
+                  [1, 'rgba(13, 148, 136, 0.3)'],
                 ],
               },
               visible: selectedSeriesIndex === 2,
@@ -1811,7 +1827,7 @@
 
           if (allData.uploads) {
             seriesData.push({
-              name: "Uploads",
+              name: 'Uploads',
               data: downsampleData(allData.timestamps, allData.uploads),
               color: {
                 linearGradient: {
@@ -1821,8 +1837,8 @@
                   y2: 1,
                 },
                 stops: [
-                  [0, "#8e44ad"],
-                  [1, "rgba(142, 68, 173, 0.3)"],
+                  [0, '#8e44ad'],
+                  [1, 'rgba(142, 68, 173, 0.3)'],
                 ],
               },
               visible: selectedSeriesIndex === 3,
@@ -1841,17 +1857,17 @@
             seriesData[selectedSeriesIndex].data
           );
 
-          videoChart = Highcharts.chart("videoChart", {
+          videoChart = Highcharts.chart('videoChart', {
             chart: {
-              type: "area",
-              backgroundColor: "var(--card-background-color)",
+              type: 'area',
+              backgroundColor: 'var(--card-background-color)',
               style: {
                 fontFamily: "'Poppins', 'Roboto', sans-serif",
               },
-              plotBorderColor: "var(--border-color)",
-              zoomType: "x",
+              plotBorderColor: 'var(--border-color)',
+              zoomType: 'x',
               panning: true,
-              panKey: "shift",
+              panKey: 'shift',
               events: {
                 load: function () {
                   const activeSeries = this.series[selectedSeriesIndex];
@@ -1861,51 +1877,51 @@
               },
               resetZoomButton: {
                 position: {
-                  align: "right",
+                  align: 'right',
                   x: -10,
                   y: 10,
-                  verticalAlign: "top",
+                  verticalAlign: 'top',
                 },
                 theme: {
-                  fill: "#3b82f6",
-                  stroke: "#2563eb",
+                  fill: '#3b82f6',
+                  stroke: '#2563eb',
                   strokeWidth: 1,
                   r: 4,
                   states: {
                     hover: {
-                      fill: "#2563eb",
-                      stroke: "#1d4ed8",
+                      fill: '#2563eb',
+                      stroke: '#1d4ed8',
                       style: {
-                        color: "#ffffff",
+                        color: '#ffffff',
                       },
                     },
                   },
                   style: {
-                    color: "#ffffff",
-                    fontWeight: "500",
-                    fontSize: "13px",
+                    color: '#ffffff',
+                    fontWeight: '500',
+                    fontSize: '13px',
                     fontFamily: "'Poppins', 'Roboto', sans-serif",
-                    textTransform: "uppercase",
-                    padding: "8px 12px",
+                    textTransform: 'uppercase',
+                    padding: '8px 12px',
                   },
                   zIndex: 20,
                 },
-                relativeTo: "plot",
+                relativeTo: 'plot',
               },
             },
             title: {
               text:
                 selectedSeriesIndex === 0
-                  ? "Views"
+                  ? 'Views'
                   : selectedSeriesIndex === 1
-                  ? "Likes"
+                  ? 'Likes'
                   : selectedSeriesIndex === 2
-                  ? "Comments"
-                  : "Uploads",
+                  ? 'Comments'
+                  : 'Uploads',
               style: {
-                color: "var(--text-color)",
-                fontWeight: "bold",
-                fontSize: "20px",
+                color: 'var(--text-color)',
+                fontWeight: 'bold',
+                fontSize: '20px',
               },
             },
             credits: {
@@ -1913,23 +1929,23 @@
             },
             xAxis: {
               title: {
-                text: "Time (EST)",
+                text: 'Time (EST)',
                 style: {
-                  color: "var(--text-color)",
-                  fontSize: "14px",
+                  color: 'var(--text-color)',
+                  fontSize: '14px',
                 },
               },
-              type: "datetime",
+              type: 'datetime',
               labels: {
                 formatter: function () {
-                  return Highcharts.dateFormat("%Y-%m-%d<br>%H:%M", this.value);
+                  return Highcharts.dateFormat('%Y-%m-%d<br>%H:%M', this.value);
                 },
                 style: {
-                  color: "var(--text-color)",
-                  fontSize: "12px",
+                  color: 'var(--text-color)',
+                  fontSize: '12px',
                 },
               },
-              gridLineColor: "var(--border-color)",
+              gridLineColor: 'var(--border-color)',
               gridLineWidth: 1,
               tickPositioner: function () {
                 const positions = [];
@@ -1979,7 +1995,7 @@
                       true,
                       {
                         duration: 500,
-                        easing: "easeOutCubic",
+                        easing: 'easeOutCubic',
                       }
                     );
                   }
@@ -1988,19 +2004,19 @@
             },
             yAxis: {
               title: {
-                text: "Count",
+                text: 'Count',
                 style: {
-                  color: "var(--text-color)",
-                  fontSize: "14px",
+                  color: 'var(--text-color)',
+                  fontSize: '14px',
                 },
               },
               labels: {
                 style: {
-                  color: "var(--text-color)",
-                  fontSize: "12px",
+                  color: 'var(--text-color)',
+                  fontSize: '12px',
                 },
               },
-              gridLineColor: "var(--border-color)",
+              gridLineColor: 'var(--border-color)',
               gridLineWidth: 1,
               startOnTick: false,
               endOnTick: false,
@@ -2037,20 +2053,20 @@
               enabled: false,
             },
             tooltip: {
-              backgroundColor: "var(--card-background-color)",
-              borderColor: "var(--border-color)",
+              backgroundColor: 'var(--card-background-color)',
+              borderColor: 'var(--border-color)',
               style: {
-                color: "var(--text-color)",
-                fontSize: "14px",
+                color: 'var(--text-color)',
+                fontSize: '14px',
               },
               formatter: function () {
-                let formattedDate = Highcharts.dateFormat("%Y-%m-%d", this.x);
+                let formattedDate = Highcharts.dateFormat('%Y-%m-%d', this.x);
                 let formattedTime =
-                  Highcharts.dateFormat("%H:%M", this.x) + ":00";
+                  Highcharts.dateFormat('%H:%M', this.x) + ':00';
 
                 let tooltipText = `<b>${formattedDate} ${formattedTime}</b><br>`;
 
-                this.points.forEach((point) => {
+                this.points.forEach(point => {
                   let label = point.series.name;
                   tooltipText += `${label}: ${point.y.toLocaleString()}<br>`;
                 });
@@ -2114,23 +2130,23 @@
             },
             resetZoomButton: {
               theme: {
-                fill: "var(--card-background-color)",
-                stroke: "var(--border-color)",
+                fill: 'var(--card-background-color)',
+                stroke: 'var(--border-color)',
                 style: {
-                  color: "var(--text-color)",
+                  color: 'var(--text-color)',
                 },
                 states: {
                   hover: {
-                    fill: "var(--border-color)",
+                    fill: 'var(--border-color)',
                     style: {
-                      color: "var(--card-background-color)",
+                      color: 'var(--card-background-color)',
                     },
                   },
                 },
                 r: 4,
               },
               position: {
-                align: "right",
+                align: 'right',
                 x: -10,
                 y: 10,
               },
@@ -2143,9 +2159,9 @@
           const totalLikes = likes[likes.length - 1] || 0;
           const totalComments = comments[comments.length - 1] || 0;
 
-          const viewsElement = document.getElementById("totalViews");
-          const likesElement = document.getElementById("totalLikes");
-          const commentsElement = document.getElementById("totalComments");
+          const viewsElement = document.getElementById('totalViews');
+          const likesElement = document.getElementById('totalLikes');
+          const commentsElement = document.getElementById('totalComments');
 
           new Odometer({
             el: viewsElement,
@@ -2164,7 +2180,7 @@
 
           if (uploads) {
             const totalUploads = uploads[uploads.length - 1] || 0;
-            const uploadsElement = document.getElementById("totalUploads");
+            const uploadsElement = document.getElementById('totalUploads');
 
             new Odometer({
               el: uploadsElement,
@@ -2175,25 +2191,29 @@
 
         function updateSelectedSeriesIndex() {
           selectedSeriesIndex = videoChart.series.findIndex(
-            (series) => series.visible
+            series => series.visible
           );
         }
 
         function showOnlySelectedSeries(index) {
           selectedSeriesIndex = index;
-          drawChart();
+          setTimeout(() => {
+            drawChart();
+          }, 100);
         }
 
-        document.querySelectorAll(".stat-card").forEach((card, index) => {
-          card.addEventListener("click", () => {
+        document.querySelectorAll('.stat-card').forEach((card, index) => {
+          card.addEventListener('click', () => {
             selectedSeriesIndex = index;
-            drawChart();
+            setTimeout(() => {
+              drawChart();
+            }, 100);
           });
         });
 
-        exportButton.addEventListener("click", () => {
+        exportButton.addEventListener('click', () => {
           if (!allData || !allData.timestamps) {
-            console.error("No data available to export.");
+            console.error('No data available to export.');
             return;
           }
 
@@ -2215,33 +2235,36 @@
           let currentTime = new Date(start);
 
           while (currentTime <= end) {
-            fullRange.push(new Date(currentTime)); 
+            fullRange.push(new Date(currentTime));
             currentTime.setHours(currentTime.getHours() + 1);
           }
 
           let dataMap = new Map();
-          timestamps.forEach((entry) => {
-            let hourKey = entry.date.toISOString().slice(0, 13); 
+          timestamps.forEach(entry => {
+            let hourKey = entry.date.toISOString().slice(0, 13);
             dataMap.set(hourKey, entry);
           });
 
-          let csvContent = "data:text/csv;charset=utf-8,Timestamp,Views,Likes,Comments\n";
+          let csvContent =
+            'data:text/csv;charset=utf-8,Timestamp,Views,Likes,Comments\n';
 
-          fullRange.forEach((time) => {
+          fullRange.forEach(time => {
             let hourKey = time.toISOString().slice(0, 13);
             let entry = dataMap.get(hourKey);
-            
+
             if (entry) {
-              csvContent += `${time.toISOString()},${entry.views},${entry.likes},${entry.comments}\n`;
+              csvContent += `${time.toISOString()},${entry.views},${
+                entry.likes
+              },${entry.comments}\n`;
             } else {
-              csvContent += `${time.toISOString()},,,\n`; 
+              csvContent += `${time.toISOString()},,,\n`;
             }
           });
 
           const encodedUri = encodeURI(csvContent);
-          const link = document.createElement("a");
-          link.setAttribute("href", encodedUri);
-          link.setAttribute("download", `${currentVideoId}.csv`);
+          const link = document.createElement('a');
+          link.setAttribute('href', encodedUri);
+          link.setAttribute('download', `${currentVideoId}.csv`);
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);

@@ -893,26 +893,6 @@
           );
         });
 
-        const mrbeastphilanthropyOption = document.createElement("div");
-        mrbeastphilanthropyOption.classList.add("dropdown-list-item", "bold");
-        mrbeastphilanthropyOption.innerHTML = `
-    <div style="display: flex; align-items: center;">
-      <img src="https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy" alt="Beast Philanthropy" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
-      Beast Philanthropy
-    </div>
-  `;
-        dropdownList.appendChild(mrbeastphilanthropyOption);
-
-        mrbeastphilanthropyOption.addEventListener("click", () => {
-          searchInput.value = "Beast Philanthropy";
-          dropdownList.classList.remove("show");
-          fetchCombinedStats(
-            mrbeastphilanthropyEndpoint,
-            "https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy",
-            "mrbeastphilanthropy"
-          );
-        });
-
         const mrbeastGamingOption = document.createElement("div");
         mrbeastGamingOption.classList.add("dropdown-list-item", "bold");
         mrbeastGamingOption.innerHTML = `
@@ -950,6 +930,26 @@
             mrbeastReactsEndpoint,
             "https://api.communitrics.com/youtube/profile?channel=mrbeastreacts",
             "mrbeastreacts"
+          );
+        });
+
+        const mrbeastphilanthropyOption = document.createElement("div");
+        mrbeastphilanthropyOption.classList.add("dropdown-list-item", "bold");
+        mrbeastphilanthropyOption.innerHTML = `
+    <div style="display: flex; align-items: center;">
+      <img src="https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy" alt="Beast Philanthropy" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
+      Beast Philanthropy
+    </div>
+  `;
+        dropdownList.appendChild(mrbeastphilanthropyOption);
+
+        mrbeastphilanthropyOption.addEventListener("click", () => {
+          searchInput.value = "Beast Philanthropy";
+          dropdownList.classList.remove("show");
+          fetchCombinedStats(
+            mrbeastphilanthropyEndpoint,
+            "https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy",
+            "mrbeastphilanthropy"
           );
         });
 

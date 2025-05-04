@@ -17,7 +17,9 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
     />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
-    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/12.1/highcharts.js"></script>
+    <script src="https://code.highcharts.com/12.1/modules/boost.js"></script>
+    <script src="https://code.highcharts.com/12.1/modules/accessibility.js"></script>
     <link
       rel="icon"
       href="https://api.communitrics.com/youtube/profile?channel=communitrics"
@@ -418,14 +420,22 @@
         transition: color 0.3s;
       }
 
-      .chart-container {
+      #videoChart {
+        min-height: 300px;
+        height: 100%;
         width: 100%;
-        max-width: 1280px;
+        display: block;
+      }
+
+      .chart-container {
         background-color: var(--card-background-color);
         border-radius: 12px;
         padding: 1.5rem;
         border: 1px solid var(--highlight-border-color);
+        min-height: 300px;
         height: 500px;
+        width: 100%;
+        max-width: 1280px;
         margin: 0 auto 3rem auto;
         box-shadow: 0 4px 20px var(--hover-shadow-color);
         transition: background-color 0.3s, box-shadow 0.3s;
@@ -1702,6 +1712,10 @@
             });
         }
 
+        function getCssVar(name) {
+          return getComputedStyle(document.body).getPropertyValue(name).trim();
+        }
+
         function drawChart() {
           if (
             !allData ||
@@ -1886,10 +1900,18 @@
             seriesData[selectedSeriesIndex].data
           );
 
+          console.log('drawChart called');
+          console.log('allData:', allData);
+          console.log(
+            'Container size:',
+            document.getElementById('videoChart').offsetWidth,
+            document.getElementById('videoChart').offsetHeight
+          );
+
           videoChart = Highcharts.chart('videoChart', {
             chart: {
               type: 'area',
-              backgroundColor: 'var(--card-background-color)',
+              backgroundColor: getCssVar('--card-background-color'),
               style: {
                 fontFamily: "'Poppins', 'Roboto', sans-serif",
               },
@@ -1948,7 +1970,7 @@
                   ? 'Comments'
                   : 'Uploads',
               style: {
-                color: 'var(--text-color)',
+                color: getCssVar('--text-color'),
                 fontWeight: 'bold',
                 fontSize: '20px',
               },
@@ -1960,7 +1982,7 @@
               title: {
                 text: 'Time (EST)',
                 style: {
-                  color: 'var(--text-color)',
+                  color: getCssVar('--text-color'),
                   fontSize: '14px',
                 },
               },
@@ -1970,20 +1992,17 @@
                   return Highcharts.dateFormat('%Y-%m-%d<br>%H:%M', this.value);
                 },
                 style: {
-                  color: 'var(--text-color)',
+                  color: getCssVar('--text-color'),
                   fontSize: '12px',
                 },
               },
-              gridLineColor: 'var(--border-color)',
+              gridLineColor: getCssVar('--border-color'),
               gridLineWidth: 1,
               tickPositioner: function () {
                 const positions = [];
                 const min = this.min || this.dataMin;
                 const max = this.max || this.dataMax;
                 const range = max - min;
-
-                const isMobile = this.chart.chartWidth <= 600;
-                const maxPoints = isMobile ? 6 : 10;
 
                 let roundingInterval;
                 if (range <= 3600000) {
@@ -1996,9 +2015,9 @@
                   roundingInterval = 24 * 3600 * 1000;
                 }
 
-                const interval = range / (maxPoints - 1);
+                const interval = range / 9;
 
-                for (let i = 0; i < maxPoints; i++) {
+                for (let i = 0; i < 9; i++) {
                   const rawPosition = min + i * interval;
                   const roundedPosition =
                     Math.round(rawPosition / roundingInterval) *
@@ -2035,17 +2054,17 @@
               title: {
                 text: 'Count',
                 style: {
-                  color: 'var(--text-color)',
+                  color: getCssVar('--text-color'),
                   fontSize: '14px',
                 },
               },
               labels: {
                 style: {
-                  color: 'var(--text-color)',
+                  color: getCssVar('--text-color'),
                   fontSize: '12px',
                 },
               },
-              gridLineColor: 'var(--border-color)',
+              gridLineColor: getCssVar('--border-color'),
               gridLineWidth: 1,
               startOnTick: false,
               endOnTick: false,
@@ -2082,10 +2101,10 @@
               enabled: false,
             },
             tooltip: {
-              backgroundColor: 'var(--card-background-color)',
-              borderColor: 'var(--border-color)',
+              backgroundColor: getCssVar('--card-background-color'),
+              borderColor: getCssVar('--border-color'),
               style: {
-                color: 'var(--text-color)',
+                color: getCssVar('--text-color'),
                 fontSize: '14px',
               },
               formatter: function () {
@@ -2134,11 +2153,6 @@
                 },
               },
             },
-            boost: {
-              enabled: true,
-              useGPUTranslations: true,
-              usePreallocated: true,
-            },
             responsive: {
               rules: [
                 {
@@ -2159,16 +2173,16 @@
             },
             resetZoomButton: {
               theme: {
-                fill: 'var(--card-background-color)',
-                stroke: 'var(--border-color)',
+                backgroundColor: getCssVar('--card-background-color'),
+                stroke: getCssVar('--border-color'),
                 style: {
-                  color: 'var(--text-color)',
+                  color: getCssVar('--text-color'),
                 },
                 states: {
                   hover: {
-                    fill: 'var(--border-color)',
+                    fill: getCssVar('--border-color'),
                     style: {
-                      color: 'var(--card-background-color)',
+                      backgroundColor: getCssVar('--card-background-color'),
                     },
                   },
                 },

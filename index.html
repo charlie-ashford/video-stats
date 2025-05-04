@@ -518,7 +518,7 @@
       }
 
       .daily-stats-table .change.positive {
-        color: #1fdb9f;
+        color: #5bdb1f;
         font-weight: var(--font-weight-bold);
       }
 
@@ -1822,12 +1822,12 @@
             {
               name: 'Likes',
               data: downsampleData(allData.timestamps, allData.likes),
-              color: '#1f5bdb',
+              color: '#1fb8db',
               fillColor: {
                 linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
                 stops: [
-                  [0, 'rgba(31, 91, 219, 0.75)'],
-                  [1, 'rgba(31, 91, 219, 0.15)'],
+                  [0, 'rgba(31, 185, 219, 0.75)'],
+                  [1, 'rgba(31, 185, 219, 0.15)'],
                 ],
               },
               visible: selectedSeriesIndex === 1,
@@ -1836,12 +1836,12 @@
             {
               name: 'Comments',
               data: downsampleData(allData.timestamps, allData.comments),
-              color: '#1fdb9f',
+              color: '#5bdb1f',
               fillColor: {
                 linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
                 stops: [
-                  [0, 'rgba(31, 219, 159, 0.75)'],
-                  [1, 'rgba(31, 219, 159, 0.15)'],
+                  [0, 'rgba(91, 219, 31, 0.75)'],
+                  [1, 'rgba(91, 219, 31, 0.15)'],
                 ],
               },
               visible: selectedSeriesIndex === 2,

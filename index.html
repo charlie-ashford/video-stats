@@ -1806,64 +1806,43 @@
             {
               name: 'Views',
               data: downsampleData(allData.timestamps, allData.views),
-              color: {
-                linearGradient: {
-                  x1: 0,
-                  x2: 0,
-                  y1: 0,
-                  y2: 1,
-                },
+              color: '#ef4444',
+              fillColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
                 stops: [
-                  [0, '#ef4444'],
-                  [1, 'rgba(239, 68, 68, 0.3)'],
+                  [0, 'rgba(239, 68, 68, 0.75)'],
+                  [1, 'rgba(239, 68, 68, 0.15)'],
                 ],
               },
               visible: selectedSeriesIndex === 0,
-              marker: {
-                enabled: false,
-              },
               lineWidth: 3,
             },
             {
               name: 'Likes',
               data: downsampleData(allData.timestamps, allData.likes),
-              color: {
-                linearGradient: {
-                  x1: 0,
-                  x2: 0,
-                  y1: 0,
-                  y2: 1,
-                },
+              color: '#1976d2',
+              fillColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
                 stops: [
-                  [0, '#1976d2'],
-                  [1, 'rgba(25, 118, 210, 0.3)'],
+                  [0, 'rgba(25, 118, 210, 0.75)'],
+                  [1, 'rgba(25, 118, 210, 0.15)'],
                 ],
               },
               visible: selectedSeriesIndex === 1,
-              marker: {
-                enabled: false,
-              },
               lineWidth: 3,
             },
             {
               name: 'Comments',
               data: downsampleData(allData.timestamps, allData.comments),
-              color: {
-                linearGradient: {
-                  x1: 0,
-                  x2: 0,
-                  y1: 0,
-                  y2: 1,
-                },
+              color: '#0d9488',
+              fillColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
                 stops: [
-                  [0, '#0d9488'],
-                  [1, 'rgba(13, 148, 136, 0.3)'],
+                  [0, 'rgba(13, 148, 136, 0.75)'],
+                  [1, 'rgba(13, 148, 136, 0.15)'],
                 ],
               },
               visible: selectedSeriesIndex === 2,
-              marker: {
-                enabled: false,
-              },
               lineWidth: 3,
             },
           ];
@@ -1872,22 +1851,15 @@
             seriesData.push({
               name: 'Uploads',
               data: downsampleData(allData.timestamps, allData.uploads),
-              color: {
-                linearGradient: {
-                  x1: 0,
-                  x2: 0,
-                  y1: 0,
-                  y2: 1,
-                },
+              color: '#8e44ad',
+              fillColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
                 stops: [
-                  [0, '#8e44ad'],
-                  [1, 'rgba(142, 68, 173, 0.3)'],
+                  [0, 'rgba(142, 68, 173, 0.75)'],
+                  [1, 'rgba(142, 68, 173, 0.15)'],
                 ],
               },
               visible: selectedSeriesIndex === 3,
-              marker: {
-                enabled: false,
-              },
               lineWidth: 3,
             });
           }
@@ -1898,14 +1870,6 @@
 
           const initialRange = getInitialDataRange(
             seriesData[selectedSeriesIndex].data
-          );
-
-          console.log('drawChart called');
-          console.log('allData:', allData);
-          console.log(
-            'Container size:',
-            document.getElementById('videoChart').offsetWidth,
-            document.getElementById('videoChart').offsetHeight
           );
 
           videoChart = Highcharts.chart('videoChart', {
@@ -2134,7 +2098,7 @@
                   states: {
                     hover: {
                       enabled: true,
-                      radius: 4,
+                      radius: 3,
                     },
                   },
                 },

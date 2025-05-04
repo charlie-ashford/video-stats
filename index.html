@@ -34,7 +34,7 @@
       name="description"
       content="See hourly data of any MrBeast video, updated in real-time."
     />
-    <meta name="theme-color" content="#d32f2f" />
+    <meta name="theme-color" content="#db421f" />
     <meta property="og:title" content="MrBeast Video Statistics" />
     <meta
       property="og:description"
@@ -52,8 +52,8 @@
 
     <style>
       :root {
-        --primary-color: #d32f2f;
-        --accent-color: #1976d2;
+        --primary-color: #db421f;
+        --accent-color: #1f5bdb;
         --background-color: #f0f2f5;
         --card-background-color: #ffffff;
         --text-color: #333333;
@@ -61,12 +61,12 @@
         --border-color: #dee2e6;
         --hover-background-color: #e9ecef;
         --hover-card-background: #f8f9fa;
-        --hover-text-color: #d32f2f;
+        --hover-text-color: #db421f;
         --button-hover-color: #ff7043;
         --hover-shadow-color: rgba(0, 0, 0, 0.15);
-        --hover-border-color: #d32f2f;
+        --hover-border-color: #db421f;
         --active-button-color: #c62828;
-        --highlight-border-color: #1976d2;
+        --highlight-border-color: #1f5bdb;
         --search-bar-background: #ffffff;
         --search-bar-border: #ced4da;
         --search-bar-focus-border: #80bdff;
@@ -102,7 +102,7 @@
         --highlight-border-color: #ffab91;
         --search-bar-background: #2c2c2c;
         --search-bar-border: #444;
-        --search-bar-focus-border: #1976d2;
+        --search-bar-focus-border: #1f5bdb;
         --search-bar-placeholder: #6c757d;
         --search-icon-color: #adb5bd;
         --toggle-background: #2c2c2c;
@@ -518,12 +518,12 @@
       }
 
       .daily-stats-table .change.positive {
-        color: #28a745;
+        color: #1fdb9f;
         font-weight: var(--font-weight-bold);
       }
 
       .daily-stats-table .change.negative {
-        color: #dc3545;
+        color: #db421f;
         font-weight: var(--font-weight-bold);
       }
 
@@ -838,8 +838,10 @@
           localStorage.setItem('theme', newTheme);
 
           updateIconColors(newTheme);
+          setTimeout(() => {
+            drawChart();
+          });
         });
-
         searchInput.addEventListener('focus', () => {
           dropdownList.classList.add('show');
         });
@@ -1173,7 +1175,7 @@
 
               setTimeout(() => {
                 drawChart();
-              }, 100);
+              }, 50);
               updateStats(
                 allData.views,
                 allData.likes,
@@ -1700,7 +1702,7 @@
               allData = { timestamps, views, likes, comments };
               setTimeout(() => {
                 drawChart();
-              }, 100);
+              }, 50);
               updateStats(views, likes, comments);
 
               const dailyData = processDailyDataForVideo(filteredStats);
@@ -2206,7 +2208,7 @@
           selectedSeriesIndex = index;
           setTimeout(() => {
             drawChart();
-          }, 100);
+          }, 50);
         }
 
         document.querySelectorAll('.stat-card').forEach((card, index) => {
@@ -2214,7 +2216,7 @@
             selectedSeriesIndex = index;
             setTimeout(() => {
               drawChart();
-            }, 100);
+            }, 50);
           });
         });
 

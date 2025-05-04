@@ -779,6 +779,8 @@
           'https://api.communitrics.com/combined-history-mbphilanthropy';
         const mrbeastGamingEndpoint =
           'https://api.communitrics.com/combined-history-mbgaming';
+        const moreMrBeastGamingEndpoint =
+          'https://api.communitrics.com/combined-history-mmbg';
         const mrbeastReactsEndpoint =
           'https://api.communitrics.com/combined-history-mbreacts';
         const cocomelonEndpoint =
@@ -910,6 +912,26 @@
             mrbeastGamingEndpoint,
             'https://api.communitrics.com/youtube/profile?channel=mrbeastgaming',
             'mrbeastgaming'
+          );
+        });
+
+        const moreMrBeastGamingOption = document.createElement('div');
+        moreMrBeastGamingOption.classList.add('dropdown-list-item', 'bold');
+        moreMrBeastGamingOption.innerHTML = `
+    <div style="display: flex; align-items: center;">
+      <img src="https://api.communitrics.com/youtube/profile?channel=moremrbeastgaming" alt="More MrBeast Gaming" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
+      More MrBeast Gaming
+    </div>
+  `;
+        dropdownList.appendChild(moreMrBeastGamingOption);
+
+        moreMrBeastGamingOption.addEventListener('click', () => {
+          searchInput.value = 'More MrBeast Gaming';
+          dropdownList.classList.remove('show');
+          fetchCombinedStats(
+            moreMrBeastGamingEndpoint,
+            'https://api.communitrics.com/youtube/profile?channel=moremrbeastgaming',
+            'moremrbeastgaming'
           );
         });
 
@@ -1054,6 +1076,13 @@
                 mrbeastphilanthropyEndpoint,
                 'https://api.communitrics.com/youtube/profile?channel=mrbeastphilanthropy',
                 'mrbeastphilanthropy'
+              );
+            } else if (videoIdFromUrl === 'moremrbeastgaming') {
+              searchInput.value = 'More MrBeast Gaming';
+              fetchCombinedStats(
+                moreMrBeastGamingEndpoint,
+                'https://api.communitrics.com/youtube/profile?channel=moremrbeastgaming',
+                'moremrbeastgaming'
               );
             } else if (videoIdFromUrl === 'cocomelon') {
               searchInput.value = 'Cocomelon - Nursery Rhymes';

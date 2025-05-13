@@ -338,7 +338,6 @@ header h1 {
 }
 
 .stat-card:hover {
-  transform: translateY(-6px);
   box-shadow: 0 12px 30px var(--hover-shadow-color);
   border-color: var(--hover-border-color);
   background-color: var(--hover-card-background);

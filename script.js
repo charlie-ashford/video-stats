@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'https://api.communitrics.com/combined-history-cocomelon';
   const ronaldoEndpoint =
     'https://api.communitrics.com/combined-history-ronaldo';
+  const taylorEndpoint = 'https://api.communitrics.com/combined-history-taylor';
   const searchInput = document.getElementById('searchInput');
   const dropdownList = document.getElementById('dropdownList');
   const exportButton = document.getElementById('exportButton');
@@ -244,6 +245,26 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   });
 
+  const taylorOption = document.createElement('div');
+  taylorOption.classList.add('dropdown-list-item', 'bold');
+  taylorOption.innerHTML = `
+    <div style="display: flex; align-items: center;">
+      <img src="https://www.banner.yt/UCANLZYMidaCbLQFWXBC95Jg/avatar" alt="Taylor Swift" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
+      Taylor Swift
+    </div>
+  `;
+  dropdownList.appendChild(taylorOption);
+
+  taylorOption.addEventListener('click', () => {
+    searchInput.value = 'Taylor Swift';
+    dropdownList.classList.remove('show');
+    fetchCombinedStats(
+      taylorEndpoint,
+      'https://www.banner.yt/UCANLZYMidaCbLQFWXBC95Jg/avatar',
+      'taylor'
+    );
+  });
+
   const urlParams = new URLSearchParams(window.location.search);
   const videoIdFromUrl = urlParams.get('data');
 
@@ -326,6 +347,13 @@ document.addEventListener('DOMContentLoaded', () => {
           ronaldoEndpoint,
           'https://www.banner.yt/UCtxD0x6AuNNqdXO9Wp5GHew/avatar',
           'ronaldo'
+        );
+      } else if (videoIdFromUrl === 'taylor') {
+        searchInput.value = 'Taylor Swift';
+        fetchCombinedStats(
+          taylorEndpoint,
+          'https://www.banner.yt/UCANLZYMidaCbLQFWXBC95Jg/avatar',
+          'taylor'
         );
       } else if (videoIdFromUrl) {
         const matchingVideo = videos.find(

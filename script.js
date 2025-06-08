@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const ronaldoEndpoint =
     'https://api.communitrics.com/combined-history-ronaldo';
   const taylorEndpoint = 'https://api.communitrics.com/combined-history-taylor';
+  const ryanEndpoint = 'https://api.communitrics.com/combined-history-ryan';
   const searchInput = document.getElementById('searchInput');
   const dropdownList = document.getElementById('dropdownList');
   const exportButton = document.getElementById('exportButton');
@@ -265,6 +266,26 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   });
 
+  const ryanOption = document.createElement('div');
+  ryanOption.classList.add('dropdown-list-item', 'bold');
+  ryanOption.innerHTML = `
+    <div style="display: flex; align-items: center;">
+      <img src="https://www.banner.yt/UCnmGIkw-KdI0W5siakKPKog/avatar" alt="Ryan Trahan" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
+      Ryan Trahan
+    </div>
+  `;
+  dropdownList.appendChild(ryanOption);
+
+  ryanOption.addEventListener('click', () => {
+    searchInput.value = 'Ryan Trahan';
+    dropdownList.classList.remove('show');
+    fetchCombinedStats(
+      ryanEndpoint,
+      'https://www.banner.yt/UCnmGIkw-KdI0W5siakKPKog/avatar',
+      'ryan'
+    );
+  });
+
   const urlParams = new URLSearchParams(window.location.search);
   const videoIdFromUrl = urlParams.get('data');
 
@@ -354,6 +375,13 @@ document.addEventListener('DOMContentLoaded', () => {
           taylorEndpoint,
           'https://www.banner.yt/UCANLZYMidaCbLQFWXBC95Jg/avatar',
           'taylor'
+        );
+      } else if (videoIdFromUrl === 'ryan') {
+        searchInput.value = 'Ryan Trahan';
+        fetchCombinedStats(
+          ryanEndpoint,
+          'https://www.banner.yt/UCnmGIkw-KdI0W5siakKPKog/avatar',
+          'ryan'
         );
       } else if (videoIdFromUrl) {
         const matchingVideo = videos.find(

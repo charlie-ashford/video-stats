@@ -473,6 +473,32 @@ header h1 {
   font-weight: var(--font-weight-bold);
 }
 
+footer {
+  width: 100%;
+  max-width: 1280px;
+  text-align: center;
+  padding: 1.5rem;
+  margin-top: 2rem;
+  color: var(--muted-text-color);
+  font-size: var(--font-size-base);
+  transition: color 0.3s;
+}
+
+footer a {
+  color: var(--primary-color);
+  font-weight: var(--font-weight-medium);
+  transition: color 0.3s;
+}
+
+footer a:hover {
+  color: var(--hover-text-color);
+}
+
+footer .fa-heart {
+  color: var(--primary-color);
+  margin: 0 0.25rem;
+}
+
 @media (max-width: 900px) {
   header {
     flex-direction: column;

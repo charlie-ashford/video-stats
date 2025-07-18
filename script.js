@@ -996,24 +996,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function downsampleData(timestamps, data) {
       const length = timestamps.length;
-
-      function convertToEasternTime(timestamp) {
-        const utcDate = new Date(Date.parse(timestamp + 'Z'));
-        return new Date(
-          utcDate.toLocaleString('en-US', {
-            timeZone: 'America/New_York',
-          })
-        ).getTime();
-      }
-
       if (length <= MAX_POINTS) {
-        return timestamps.map((t, i) => [convertToEasternTime(t), data[i]]);
+        return timestamps.map((t, i) => [new Date(t).getTime(), data[i]]);
       }
-
       const step = Math.floor(length / MAX_POINTS);
       const sampledData = [];
       for (let i = 0; i < length; i += step) {
-        sampledData.push([convertToEasternTime(timestamps[i]), data[i]]);
+        sampledData.push([new Date(timestamps[i]).getTime(), data[i]]);
       }
       return sampledData;
     }
@@ -1200,7 +1189,9 @@ document.addEventListener('DOMContentLoaded', () => {
         type: 'datetime',
         labels: {
           formatter: function () {
-            return Highcharts.dateFormat('%Y-%m-%d<br>%H:%M', this.value);
+            return luxon.DateTime.fromMillis(this.value, {
+              zone: 'America/New_York',
+            }).toFormat('yyyy-MM-dd<br>HH:mm');
           },
           style: {
             color: getCssVar('--text-color'),

@@ -161,8 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const img = document.createElement('img');
       img.src = src;
       img.alt = alt;
-      img.style.cssText =
-        'width: 60px; height: 60px; border-radius: 50%; margin-right: -150px;';
       img.classList.add('profile-image');
       return img;
     },
@@ -1122,16 +1120,23 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelector('header h1').textContent = 'Channel Analytics';
 
       Utils.removeExistingProfileImage();
+      
+      let headerLeft = document.querySelector('.header-left');
+      if (!headerLeft) {
+        headerLeft = document.createElement('div');
+        headerLeft.className = 'header-left';
+        const header = document.querySelector('header');
+        const h1 = header.querySelector('h1');
+        header.insertBefore(headerLeft, h1);
+        headerLeft.appendChild(h1);
+      }
+      
       const profileImage = Utils.createProfileImage(profileImageUrl);
-      document
-        .querySelector('header')
-        .insertBefore(
-          profileImage,
-          document.querySelector('header').firstChild
-        );
+      headerLeft.insertBefore(profileImage, headerLeft.firstChild);
 
       Utils.updateUrl(urlPath);
       document.getElementById('uploadCountCard').style.display = 'flex';
+      document.querySelector('.stats-grid').classList.remove('three-columns'); 
 
       fetch(endpoint)
         .then(response => response.json())
@@ -1163,6 +1168,7 @@ document.addEventListener('DOMContentLoaded', () => {
       Utils.updateUrl(videoId);
 
       document.getElementById('uploadCountCard').style.display = 'none';
+      document.querySelector('.stats-grid').classList.add('three-columns');
       document.querySelector('header h1').textContent = 'Video Analytics';
 
       if (AppState.selectedSeriesIndex === 3) {

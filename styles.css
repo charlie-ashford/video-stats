@@ -106,7 +106,14 @@ header {
   background-color: var(--card-background-color);
   border-radius: var(--border-radius);
   box-shadow: 0 4px 20px var(--hover-shadow-color);
-  transition: background-color 0.3s, box-shadow 0.3s;
+  gap: 1rem;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
 }
 
 header h1 {
@@ -322,9 +329,13 @@ header h1 {
   width: 100%;
   max-width: 1280px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(4, 1fr); 
   gap: var(--gap-size);
   margin-bottom: 3rem;
+}
+
+.stats-grid.three-columns {
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .stat-card {
@@ -505,7 +516,8 @@ footer .fa-heart {
   width: clamp(40px, 8vw, 60px) !important;
   height: clamp(40px, 8vw, 60px) !important;
   border-radius: 50% !important;
-  margin-right: 1rem !important;
+  margin-right: 1rem !important; 
+  margin-left: -0.5rem !important;
   flex-shrink: 0 !important;
 }
 
@@ -555,7 +567,8 @@ footer .fa-heart {
     max-width: 280px;
   }
 
-  .stats-grid {
+  .stats-grid,
+  .stats-grid.three-columns {
     grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
   }
@@ -612,7 +625,8 @@ footer .fa-heart {
     max-width: 300px;
   }
 
-  .stats-grid {
+  .stats-grid,
+  .stats-grid.three-columns {
     grid-template-columns: repeat(2, 1fr);
   }
 }

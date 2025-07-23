@@ -233,7 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
           value !== undefined
         ) {
           result.push([time, value]);
-        } else {
         }
       }
       return result;
@@ -1120,7 +1119,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelector('header h1').textContent = 'Channel Analytics';
 
       Utils.removeExistingProfileImage();
-      
+
       let headerLeft = document.querySelector('.header-left');
       if (!headerLeft) {
         headerLeft = document.createElement('div');
@@ -1130,13 +1129,13 @@ document.addEventListener('DOMContentLoaded', () => {
         header.insertBefore(headerLeft, h1);
         headerLeft.appendChild(h1);
       }
-      
+
       const profileImage = Utils.createProfileImage(profileImageUrl);
       headerLeft.insertBefore(profileImage, headerLeft.firstChild);
 
       Utils.updateUrl(urlPath);
       document.getElementById('uploadCountCard').style.display = 'flex';
-      document.querySelector('.stats-grid').classList.remove('three-columns'); 
+      document.querySelector('.stats-grid').classList.remove('three-columns');
 
       fetch(endpoint)
         .then(response => response.json())
@@ -1246,8 +1245,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const ExportManager = {
     init() {
-      DOM.exportButton.addEventListener('click', this.exportData);
-      DOM.tableContainer.addEventListener('wheel', this.handleTableScroll);
+      DOM.exportButton.addEventListener('click', () => this.exportData());
+      DOM.tableContainer.addEventListener('wheel', e =>
+        this.handleTableScroll(e)
+      );
     },
 
     exportData() {
@@ -1325,61 +1326,61 @@ document.addEventListener('DOMContentLoaded', () => {
     },
   };
 
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
+  function createResponsiveLayout() {
+    const headerControls = document.querySelector('.header-controls');
+    const themeToggle = document.getElementById('themeToggle');
+    const exportButton = document.getElementById('exportButton');
+    const searchBar = document.querySelector('.search-bar');
+
+    const existingMobileButtons = document.querySelector('.mobile-buttons');
+    if (existingMobileButtons) {
+      existingMobileButtons.remove();
+    }
+
+    if (window.innerWidth <= 768) {
+      let mobileButtons = document.querySelector('.mobile-buttons');
+      if (!mobileButtons) {
+        mobileButtons = document.createElement('div');
+        mobileButtons.className = 'mobile-buttons';
+        headerControls.appendChild(mobileButtons);
+      }
+
+      mobileButtons.appendChild(themeToggle);
+      mobileButtons.appendChild(exportButton);
+
+      headerControls.insertBefore(searchBar, mobileButtons);
+    } else {
+      headerControls.appendChild(searchBar);
+      headerControls.appendChild(themeToggle);
+      headerControls.appendChild(exportButton);
+    }
+  }
+
+  window.addEventListener(
+    'resize',
+    debounce(() => {
+      if (AppState.videoChart) {
+        ChartManager.redrawWithDelay();
+      }
+    }, 250)
+  );
+
+  window.addEventListener('load', createResponsiveLayout);
+  window.addEventListener('resize', createResponsiveLayout);
+
   ThemeManager.init();
   SearchManager.init();
   ExportManager.init();
 });
-
-window.addEventListener(
-  'resize',
-  debounce(() => {
-    if (AppState.videoChart) {
-      ChartManager.redrawWithDelay();
-    }
-  }, 250)
-);
-
-function createResponsiveLayout() {
-  const headerControls = document.querySelector('.header-controls');
-  const themeToggle = document.getElementById('themeToggle');
-  const exportButton = document.getElementById('exportButton');
-  const searchBar = document.querySelector('.search-bar');
-
-  const existingMobileButtons = document.querySelector('.mobile-buttons');
-  if (existingMobileButtons) {
-    existingMobileButtons.remove();
-  }
-
-  if (window.innerWidth <= 768) {
-    let mobileButtons = document.querySelector('.mobile-buttons');
-    if (!mobileButtons) {
-      mobileButtons = document.createElement('div');
-      mobileButtons.className = 'mobile-buttons';
-      headerControls.appendChild(mobileButtons);
-    }
-
-    mobileButtons.appendChild(themeToggle);
-    mobileButtons.appendChild(exportButton);
-
-    headerControls.insertBefore(searchBar, mobileButtons);
-  } else {
-    headerControls.appendChild(searchBar);
-    headerControls.appendChild(themeToggle);
-    headerControls.appendChild(exportButton);
-  }
-}
-
-function debounce(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-
-window.addEventListener('load', createResponsiveLayout);
-window.addEventListener('resize', createResponsiveLayout);

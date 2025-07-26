@@ -428,33 +428,17 @@ document.addEventListener('DOMContentLoaded', () => {
     getChartEvents(storedInitialRange) {
       return {
         load: function () {
-          setTimeout(
-            () => {
+          const delay = AppState.isMobile ? 50 : 100;
+          setTimeout(() => {
+            if (this.yAxis && this.yAxis[0]) {
               this.yAxis[0].setExtremes(
                 storedInitialRange.min,
                 storedInitialRange.max,
-                true
-              );
-            },
-            AppState.isMobile ? 200 : 50
-          );
-        },
-        redraw: function () {
-          if (AppState.isMobile) {
-            const currentYMin = this.yAxis[0].min;
-            const currentYMax = this.yAxis[0].max;
-
-            if (
-              Math.abs(currentYMax - storedInitialRange.max) >
-              storedInitialRange.max * 0.5
-            ) {
-              this.yAxis[0].setExtremes(
-                storedInitialRange.min,
-                storedInitialRange.max,
+                true,
                 false
               );
             }
-          }
+          }, delay);
         },
       };
     },
@@ -535,14 +519,20 @@ document.addEventListener('DOMContentLoaded', () => {
         softThreshold: true,
         minPadding: 0.1,
         maxPadding: 0.1,
-        ...(!AppState.isMobile
+        min: initialRange.min,
+        max: initialRange.max,
+        ...(AppState.isMobile
           ? {
-              min: initialRange.min,
-              max: initialRange.max,
+              allowDecimals: false,
+              ceiling: initialRange.max,
+              floor: initialRange.min,
             }
           : {}),
         events: {
-          afterSetExtremes: function (e) {},
+          afterSetExtremes: function (e) {
+            if (e.trigger === 'zoom' || e.trigger === 'pan') {
+            }
+          },
         },
       };
     },
@@ -775,40 +765,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ],
           },
         });
-
-        this.finalizeChart(storedInitialRange);
       } catch (error) {
         document.getElementById(
           'videoChart'
         ).innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Chart creation failed: ${error.message}</div>`;
-      }
-    },
-
-    finalizeChart(storedInitialRange) {
-      if (AppState.isMobile) {
-        setTimeout(() => {
-          if (
-            AppState.videoChart &&
-            AppState.videoChart.yAxis &&
-            AppState.videoChart.yAxis[0]
-          ) {
-            const currentRange = {
-              min: AppState.videoChart.yAxis[0].min,
-              max: AppState.videoChart.yAxis[0].max,
-            };
-
-            if (
-              Math.abs(currentRange.max - storedInitialRange.max) >
-              storedInitialRange.max * 0.5
-            ) {
-              AppState.videoChart.yAxis[0].setExtremes(
-                storedInitialRange.min,
-                storedInitialRange.max,
-                true
-              );
-            }
-          }
-        }, 500);
       }
     },
 

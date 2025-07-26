@@ -24,12 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
         avatar: 'https://www.banner.yt/UCIPPMRA040LQr5QPyJEbmXA/avatar',
       },
       {
-        id: 'moremrbeastgaming',
-        name: 'More MrBeast Gaming',
-        endpoint: 'https://api.communitrics.com/combined-history-mmbg',
-        avatar: 'https://www.banner.yt/UCzfPgw5WN9bvMiBz-JJYVyw/avatar',
-      },
-      {
         id: 'mrbeastreacts',
         name: 'Beast Reacts',
         endpoint: 'https://api.communitrics.com/combined-history-mbreacts',
@@ -47,6 +41,12 @@ document.addEventListener('DOMContentLoaded', () => {
         name: 'Beast Animations',
         endpoint: 'https://api.communitrics.com/combined-history-mb3',
         avatar: 'https://www.banner.yt/UCZzvDDvaYti8Dd8bLEiSoyQ/avatar',
+      },
+      {
+        id: 'moremrbeastgaming',
+        name: 'More MrBeast Gaming',
+        endpoint: 'https://api.communitrics.com/combined-history-mmbg',
+        avatar: 'https://www.banner.yt/UCzfPgw5WN9bvMiBz-JJYVyw/avatar',
       },
       {
         id: 'cocomelon',

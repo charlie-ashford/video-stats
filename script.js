@@ -18,12 +18,6 @@ document.addEventListener('DOMContentLoaded', () => {
         avatar: 'https://www.banner.yt/UC4-79UOlP48-QNGgCko5p2g/avatar',
       },
       {
-        id: 'beastanimations',
-        name: 'Beast Animations',
-        endpoint: 'https://api.communitrics.com/combined-history-mb3',
-        avatar: 'https://www.banner.yt/UCZzvDDvaYti8Dd8bLEiSoyQ/avatar',
-      },
-      {
         id: 'mrbeastgaming',
         name: 'MrBeast Gaming',
         endpoint: 'https://api.communitrics.com/combined-history-mbgaming',
@@ -47,6 +41,12 @@ document.addEventListener('DOMContentLoaded', () => {
         endpoint:
           'https://api.communitrics.com/combined-history-mbphilanthropy',
         avatar: 'https://www.banner.yt/UCAiLfjNXkNv24uhpzUgPa6A/avatar',
+      },
+      {
+        id: 'beastanimations',
+        name: 'Beast Animations',
+        endpoint: 'https://api.communitrics.com/combined-history-mb3',
+        avatar: 'https://www.banner.yt/UCZzvDDvaYti8Dd8bLEiSoyQ/avatar',
       },
       {
         id: 'cocomelon',

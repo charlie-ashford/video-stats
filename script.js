@@ -18,6 +18,12 @@ document.addEventListener('DOMContentLoaded', () => {
         avatar: 'https://www.banner.yt/UC4-79UOlP48-QNGgCko5p2g/avatar',
       },
       {
+        id: 'mrbeast3',
+        name: 'MrBeast 3',
+        endpoint: 'https://api.communitrics.com/combined-history-mb3',
+        avatar: 'https://www.banner.yt/UCZzvDDvaYti8Dd8bLEiSoyQ/avatar',
+      },
+      {
         id: 'mrbeastgaming',
         name: 'MrBeast Gaming',
         endpoint: 'https://api.communitrics.com/combined-history-mbgaming',

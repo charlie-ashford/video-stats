@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
       {
         id: 'beastanimations',
         name: 'Beast Animations',
-        endpoint: 'https://api.communitrics.com/combined-history-mb3',
+        endpoint: 'https://api.communitrics.com/combined-history-mbanimations',
         avatar: 'https://www.banner.yt/UCZzvDDvaYti8Dd8bLEiSoyQ/avatar',
       },
       {

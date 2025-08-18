@@ -66,12 +66,6 @@ document.addEventListener('DOMContentLoaded', () => {
         endpoint: 'https://api.communitrics.com/combined-history-taylor',
         avatar: 'https://www.banner.yt/UCANLZYMidaCbLQFWXBC95Jg/avatar',
       },
-      {
-        id: 'ryan',
-        name: 'Ryan Trahan',
-        endpoint: 'https://api.communitrics.com/combined-history-ryan',
-        avatar: 'https://www.banner.yt/UCnmGIkw-KdI0W5siakKPKog/avatar',
-      },
     ],
     seriesColors: {
       views: '#db421f',

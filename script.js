@@ -752,7 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'area',
             backgroundColor: Utils.getCssVar('--card-background-color'),
             style: {
-              fontFamily: "'Inter', 'Poppins', sans-serif",
+              fontFamily: "'Poppins', sans-serif",
               fontSize: '14px',
             },
             plotBackgroundColor: Utils.getCssVar('--card-background-color'),
@@ -785,7 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
               color: Utils.getCssVar('--text-color'),
               fontWeight: '700',
               fontSize: AppState.isMobile ? '16px' : '22px',
-              fontFamily: "'Inter', 'Poppins', sans-serif",
+              fontFamily: "'Poppins', sans-serif",
             },
             margin: AppState.isMobile ? 15 : 30,
             align: 'center',
@@ -1386,7 +1386,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const uploadDate = luxon.DateTime.fromISO(video.uploadTime).setZone(
         'America/New_York'
       );
-      elements.uploadDate.textContent = `Uploaded on: ${uploadDate.toFormat(
+      elements.uploadDate.textContent = `Uploaded: ${uploadDate.toFormat(
         'M/d/yyyy'
       )} at ${uploadDate.toFormat('h:mm:ss a')} EST`;
 

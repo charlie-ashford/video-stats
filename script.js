@@ -157,6 +157,25 @@ document.addEventListener('DOMContentLoaded', () => {
       return value;
     },
 
+    formatValueSmart(value, tickInterval) {
+      const absValue = Math.abs(value);
+
+      if (absValue >= 1000000000) {
+        const billions = value / 1000000000;
+        const decimalPlaces = tickInterval && tickInterval < 10000000 ? 3 : 1;
+        return billions.toFixed(decimalPlaces) + 'B';
+      } else if (absValue >= 1000000) {
+        const millions = value / 1000000;
+        const decimalPlaces = tickInterval && tickInterval < 10000 ? 2 : 1;
+        return millions.toFixed(decimalPlaces) + 'M';
+      } else if (absValue >= 1000) {
+        const thousands = value / 1000;
+        const decimalPlaces = tickInterval && tickInterval < 10 ? 2 : 1;
+        return thousands.toFixed(decimalPlaces) + 'K';
+      }
+      return Math.round(value).toLocaleString();
+    },
+
     createProfileImage(src, alt = 'Profile Image') {
       const img = document.createElement('img');
       img.src = src;
@@ -223,7 +242,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const length = timestamps.length;
 
       for (let i = 0; i < length; i += step || 1) {
-        const time = new Date(timestamps[i]).getTime();
+        const time =
+          typeof timestamps[i] === 'string'
+            ? luxon.DateTime.fromISO(timestamps[i])
+                .setZone('America/New_York')
+                .toMillis()
+            : new Date(timestamps[i]).getTime();
         const value = data[i];
 
         if (
@@ -283,72 +307,71 @@ document.addEventListener('DOMContentLoaded', () => {
 
     processDailyData(data, useTimestamp = false) {
       const dailyData = [];
-      let currentDate = null;
-      let closestToMidnight = null;
-      let firstEntryOfDay = null;
+      const processedDates = new Set();
 
-      data.forEach((entry, index) => {
-        const entryDate = new Date(useTimestamp ? entry.timestamp : entry.time);
-        const entryDateString = entryDate.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          timeZone: 'America/New_York',
+      data.forEach(entry => {
+        const entryDateTime = luxon.DateTime.fromISO(
+          useTimestamp ? entry.timestamp : entry.time
+        ).setZone('America/New_York');
+
+        const dateKey = entryDateTime.toFormat('yyyy-MM-dd');
+
+        if (processedDates.has(dateKey)) {
+          return;
+        }
+
+        const sameDayEntries = data.filter(e => {
+          const dt = luxon.DateTime.fromISO(
+            useTimestamp ? e.timestamp : e.time
+          ).setZone('America/New_York');
+          return dt.toFormat('yyyy-MM-dd') === dateKey;
         });
 
-        const entryEasternTime = new Date(
-          entryDate.toLocaleString('en-US', { timeZone: 'America/New_York' })
-        );
-        const millisecondsFromMidnight =
-          entryEasternTime.getHours() * 3600000 +
-          entryEasternTime.getMinutes() * 60000 +
-          entryEasternTime.getSeconds() * 1000 +
-          entryEasternTime.getMilliseconds();
+        let closestToMidnight = sameDayEntries[0];
+        let minDistanceFromMidnight = Infinity;
 
-        if (entryDateString !== currentDate) {
-          if (useTimestamp && firstEntryOfDay) {
-            dailyData.push(
-              firstEntryOfDay.views < 1000 ? firstEntryOfDay : closestToMidnight
-            );
-          } else if (!useTimestamp && (closestToMidnight || index === 0)) {
-            dailyData.push(closestToMidnight || entry);
+        sameDayEntries.forEach(e => {
+          const dt = luxon.DateTime.fromISO(
+            useTimestamp ? e.timestamp : e.time
+          ).setZone('America/New_York');
+
+          const minutesFromMidnight = dt.hour * 60 + dt.minute;
+
+          if (minutesFromMidnight < minDistanceFromMidnight) {
+            minDistanceFromMidnight = minutesFromMidnight;
+            closestToMidnight = e;
+          }
+        });
+
+        if (closestToMidnight) {
+          const adjustedEntry = { ...closestToMidnight };
+
+          const originalDateTime = luxon.DateTime.fromISO(
+            useTimestamp ? adjustedEntry.timestamp : adjustedEntry.time
+          ).setZone('America/New_York');
+
+          const adjustedDateTime = originalDateTime.minus({ days: 1 });
+
+          if (useTimestamp) {
+            adjustedEntry.timestamp = adjustedDateTime.toISO();
+          } else {
+            adjustedEntry.time = adjustedDateTime.toISO();
           }
 
-          currentDate = entryDateString;
-          firstEntryOfDay = entry;
-          closestToMidnight = entry;
-        } else {
-          const closestDate = new Date(
-            useTimestamp ? closestToMidnight.timestamp : closestToMidnight.time
-          );
-          const closestEasternTime = new Date(
-            closestDate.toLocaleString('en-US', {
-              timeZone: 'America/New_York',
-            })
-          );
-          const closestMillisecondsFromMidnight =
-            closestEasternTime.getHours() * 3600000 +
-            closestEasternTime.getMinutes() * 60000 +
-            closestEasternTime.getSeconds() * 1000 +
-            closestEasternTime.getMilliseconds();
+          adjustedEntry._originalTime = useTimestamp
+            ? closestToMidnight.timestamp
+            : closestToMidnight.time;
 
-          if (millisecondsFromMidnight < closestMillisecondsFromMidnight) {
-            closestToMidnight = entry;
-          }
+          dailyData.push(adjustedEntry);
+          processedDates.add(dateKey);
         }
       });
 
-      if (useTimestamp && firstEntryOfDay) {
-        dailyData.push(
-          firstEntryOfDay.views < 1000 ? firstEntryOfDay : closestToMidnight
-        );
-      } else if (
-        !useTimestamp &&
-        closestToMidnight &&
-        closestToMidnight !== dailyData[dailyData.length - 1]
-      ) {
-        dailyData.push(closestToMidnight);
-      }
+      dailyData.sort((a, b) => {
+        const dateA = new Date(useTimestamp ? a.timestamp : a.time);
+        const dateB = new Date(useTimestamp ? b.timestamp : b.time);
+        return dateA - dateB;
+      });
 
       return dailyData;
     },
@@ -443,26 +466,52 @@ document.addEventListener('DOMContentLoaded', () => {
           text: 'Time (EST)',
           style: {
             color: Utils.getCssVar('--text-color'),
-            fontSize: AppState.isMobile ? '12px' : '14px',
+            fontSize: AppState.isMobile ? '13px' : '16px',
+            fontWeight: '600',
           },
+          margin: AppState.isMobile ? 15 : 20,
         },
         type: 'datetime',
         labels: {
           formatter: function () {
-            return luxon.DateTime.fromMillis(this.value, {
+            const dt = luxon.DateTime.fromMillis(this.value, {
               zone: 'America/New_York',
-            }).toFormat(
-              AppState.isMobile ? 'MM-dd<br>HH:mm' : 'yyyy-MM-dd<br>HH:mm'
-            );
+            });
+
+            if (AppState.isMobile) {
+              return dt.toFormat('MM/dd<br/>HH:mm');
+            } else {
+              const range = this.axis.max - this.axis.min;
+              if (range <= 86400000) {
+                return dt.toFormat('HH:mm<br/>MM/dd');
+              } else if (range <= 604800000) {
+                return dt.toFormat('MM/dd<br/>HH:mm');
+              } else {
+                return dt.toFormat('MMM dd<br/>yyyy');
+              }
+            }
           },
           style: {
             color: Utils.getCssVar('--text-color'),
-            fontSize: AppState.isMobile ? '10px' : '12px',
+            fontSize: AppState.isMobile ? '11px' : '13px',
+            fontWeight: '500',
           },
           step: AppState.isMobile ? 2 : 1,
+          rotation: 0,
+          align: 'center',
         },
         gridLineColor: Utils.getCssVar('--border-color'),
         gridLineWidth: 1,
+        gridLineDashStyle: 'Dash',
+        lineColor: Utils.getCssVar('--border-color'),
+        lineWidth: 2,
+        tickColor: Utils.getCssVar('--border-color'),
+        tickWidth: 1,
+        tickLength: 5,
+        minorTickLength: 3,
+        minorGridLineColor: Utils.getCssVar('--border-color'),
+        minorGridLineWidth: 0.5,
+        minorGridLineDashStyle: 'Dot',
         tickPositioner: this.getTickPositioner(),
         events: {
           afterSetExtremes: function (e) {
@@ -477,8 +526,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
 
                 this.chart.yAxis[0].setExtremes(range.min, range.max, true, {
-                  duration: 500,
-                  easing: 'easeOutCubic',
+                  duration: 300,
+                  easing: 'easeOutQuart',
                 });
               }
             }
@@ -488,46 +537,63 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
     getYAxisConfig(initialRange) {
+      const isUploadsChart =
+        AppState.selectedSeriesIndex === 3 && AppState.allData.uploads;
+
       return {
         title: {
           text: 'Count',
           style: {
             color: Utils.getCssVar('--text-color'),
-            fontSize: AppState.isMobile ? '12px' : '14px',
+            fontSize: AppState.isMobile ? '13px' : '16px',
+            fontWeight: '600',
           },
+          margin: AppState.isMobile ? 15 : 20,
         },
         labels: {
           style: {
             color: Utils.getCssVar('--text-color'),
-            fontSize: AppState.isMobile ? '10px' : '12px',
+            fontSize: AppState.isMobile ? '11px' : '13px',
+            fontWeight: '500',
           },
           formatter: function () {
-            return Utils.formatValue(this.value);
+            if (isUploadsChart) {
+              return Math.round(this.value).toLocaleString();
+            } else {
+              return Utils.formatValueSmart(this.value, this.axis.tickInterval);
+            }
           },
+          align: 'right',
+          x: -5,
+          y: 4,
         },
         gridLineColor: Utils.getCssVar('--border-color'),
         gridLineWidth: 1,
+        gridLineDashStyle: 'Dash',
+        lineColor: Utils.getCssVar('--border-color'),
+        lineWidth: 2,
+        tickColor: Utils.getCssVar('--border-color'),
+        tickWidth: 1,
+        tickLength: 5,
+        minorTickLength: 3,
+        minorGridLineColor: Utils.getCssVar('--border-color'),
+        minorGridLineWidth: 0.5,
+        minorGridLineDashStyle: 'Dot',
         startOnTick: false,
         endOnTick: false,
-        tickAmount: AppState.isMobile ? 4 : 6,
+        tickAmount: AppState.isMobile ? 5 : 7,
         softThreshold: true,
-        minPadding: 0.1,
-        maxPadding: 0.1,
+        minPadding: 0.05,
+        maxPadding: 0.05,
         min: initialRange.min,
         max: initialRange.max,
+        allowDecimals: isUploadsChart ? false : true,
         ...(AppState.isMobile
           ? {
-              allowDecimals: false,
               ceiling: initialRange.max,
               floor: initialRange.min,
             }
           : {}),
-        events: {
-          afterSetExtremes: function (e) {
-            if (e.trigger === 'zoom' || e.trigger === 'pan') {
-            }
-          },
-        },
       };
     },
 
@@ -572,8 +638,13 @@ document.addEventListener('DOMContentLoaded', () => {
           fontSize: AppState.isMobile ? '12px' : '14px',
         },
         formatter: function () {
-          let formattedDate = Highcharts.dateFormat('%Y-%m-%d', this.x);
-          let formattedTime = Highcharts.dateFormat('%H:%M', this.x) + ':00';
+          const dateTime = luxon.DateTime.fromMillis(this.x, {
+            zone: 'America/New_York',
+          });
+
+          const formattedDate = dateTime.toFormat('yyyy-MM-dd');
+          const formattedTime = dateTime.toFormat('HH:mm:ss');
+
           let tooltipText = `<b>${formattedDate} ${formattedTime}</b><br>`;
 
           this.points.forEach(point => {
@@ -668,10 +739,10 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const getChartHeight = () => {
           const width = window.innerWidth;
-          if (width <= 480) return 250;
-          if (width <= 768) return 300;
-          if (width <= 1024) return 350;
-          return 400;
+          if (width <= 480) return 280;
+          if (width <= 768) return 350;
+          if (width <= 1024) return 400;
+          return 450;
         };
 
         const chartHeight = getChartHeight();
@@ -680,28 +751,44 @@ document.addEventListener('DOMContentLoaded', () => {
           chart: {
             type: 'area',
             backgroundColor: Utils.getCssVar('--card-background-color'),
-            style: { fontFamily: "'Poppins', 'Roboto', sans-serif" },
+            style: {
+              fontFamily: "'Inter', 'Poppins', sans-serif",
+              fontSize: '14px',
+            },
+            plotBackgroundColor: Utils.getCssVar('--card-background-color'),
             plotBorderColor: Utils.getCssVar('--border-color'),
+            plotBorderWidth: 1,
             zoomType: 'x',
-            panning: true,
+            panning: {
+              enabled: true,
+              type: 'x',
+            },
             panKey: 'shift',
-            animation: AppState.isMobile ? false : { duration: 500 },
+            animation: AppState.isMobile
+              ? false
+              : {
+                  duration: 600,
+                  easing: 'easeOutQuart',
+                },
             events: ChartConfigFactory.getChartEvents(storedInitialRange),
             height: chartHeight,
-            spacingBottom: AppState.isMobile ? 10 : 25,
-            spacingTop: AppState.isMobile ? 5 : 20,
-            spacingLeft: AppState.isMobile ? 5 : 20,
-            spacingRight: AppState.isMobile ? 5 : 20,
+            spacingBottom: AppState.isMobile ? 15 : 30,
+            spacingTop: AppState.isMobile ? 10 : 25,
+            spacingLeft: AppState.isMobile ? 10 : 25,
+            spacingRight: AppState.isMobile ? 10 : 25,
+            borderRadius: 12,
           },
           boost: { enabled: false },
           title: {
-            text: activeSeries.name,
+            text: `${activeSeries.name}`,
             style: {
               color: Utils.getCssVar('--text-color'),
-              fontWeight: 'bold',
-              fontSize: AppState.isMobile ? '14px' : '20px',
+              fontWeight: '700',
+              fontSize: AppState.isMobile ? '16px' : '22px',
+              fontFamily: "'Inter', 'Poppins', sans-serif",
             },
-            margin: AppState.isMobile ? 10 : 25,
+            margin: AppState.isMobile ? 15 : 30,
+            align: 'center',
           },
           credits: { enabled: false },
           xAxis: ChartConfigFactory.getXAxisConfig(),
@@ -711,49 +798,70 @@ document.addEventListener('DOMContentLoaded', () => {
           tooltip: ChartConfigFactory.getTooltipConfig(),
           plotOptions: {
             series: {
-              animation: AppState.isMobile ? false : { duration: 300 },
+              animation: AppState.isMobile
+                ? false
+                : {
+                    duration: 400,
+                    easing: 'easeOutQuart',
+                  },
               marker: {
                 enabled: false,
                 states: {
-                  hover: { enabled: true, radius: AppState.isMobile ? 2 : 3 },
+                  hover: {
+                    enabled: true,
+                    radius: AppState.isMobile ? 4 : 6,
+                    lineWidth: 2,
+                    lineColor: '#ffffff',
+                  },
                 },
               },
-              states: { hover: { lineWidthPlus: 0 } },
+              states: {
+                hover: {
+                  lineWidthPlus: AppState.isMobile ? 1 : 2,
+                  halo: {
+                    size: 8,
+                    opacity: 0.3,
+                  },
+                },
+                inactive: {
+                  opacity: 0.6,
+                },
+              },
               turboThreshold: AppState.isMobile ? 500 : 1000,
               cropThreshold: AppState.isMobile ? 250 : 500,
             },
-            area: { fillOpacity: AppState.isMobile ? 0.3 : 0.5 },
+            area: {
+              fillOpacity: AppState.isMobile ? 0.4 : 0.6,
+              lineWidth: AppState.isMobile ? 2.5 : 3.5,
+              threshold: null,
+            },
           },
           responsive: {
             rules: [
               {
-                condition: {
-                  maxWidth: 480,
-                },
+                condition: { maxWidth: 480 },
                 chartOptions: {
                   chart: {
-                    height: 250,
-                    spacingBottom: 10,
-                    spacingTop: 5,
-                    spacingLeft: 5,
-                    spacingRight: 5,
+                    height: 280,
+                    spacingBottom: 15,
+                    spacingTop: 10,
+                    spacingLeft: 10,
+                    spacingRight: 10,
                   },
                   title: {
-                    style: {
-                      fontSize: '14px',
-                    },
+                    style: { fontSize: '16px' },
+                    margin: 15,
+                  },
+                  subtitle: {
+                    style: { fontSize: '11px' },
                     margin: 10,
                   },
                 },
               },
               {
-                condition: {
-                  maxWidth: 768,
-                },
+                condition: { maxWidth: 768 },
                 chartOptions: {
-                  chart: {
-                    height: 300,
-                  },
+                  chart: { height: 350 },
                 },
               },
             ],
@@ -805,7 +913,26 @@ document.addEventListener('DOMContentLoaded', () => {
       const tableBody = document.getElementById('dailyStatsBody');
       tableBody.innerHTML = '';
 
-      if (currentDayData) {
+      const currentDate = currentDayData
+        ? luxon.DateTime.fromISO(
+            useTimestamp ? currentDayData.timestamp : currentDayData.time
+          )
+            .setZone('America/New_York')
+            .toFormat('yyyy-MM-dd')
+        : null;
+
+      const lastDailyDate =
+        dailyData.length > 0
+          ? luxon.DateTime.fromISO(
+              useTimestamp
+                ? dailyData[dailyData.length - 1].timestamp
+                : dailyData[dailyData.length - 1].time
+            )
+              .setZone('America/New_York')
+              .toFormat('yyyy-MM-dd')
+          : null;
+
+      if (currentDayData && currentDate !== lastDailyDate) {
         this.addCurrentDayRow(
           tableBody,
           currentDayData,
@@ -820,11 +947,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     addCurrentDayRow(tableBody, currentDayData, dailyData, useTimestamp) {
       const currentRow = document.createElement('tr');
-      const currentDate = new Date(
-        useTimestamp ? currentDayData.timestamp : currentDayData.time
-      );
 
-      const { dateString, timeString } = this.formatDateTime(currentDate, true);
+      const currentDataTime = luxon.DateTime.fromISO(
+        useTimestamp ? currentDayData.timestamp : currentDayData.time
+      ).setZone('America/New_York');
+
+      const roundedToHour = currentDataTime.set({
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+      });
+
+      const currentDate = luxon.DateTime.now().setZone('America/New_York');
+      const displayDateTime = currentDate.set({
+        hour: roundedToHour.hour,
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+      });
+
+      const { dateString } = this.formatDateTimeWithLuxon(displayDateTime);
+      const timeString = displayDateTime.toFormat('HH:mm');
       const previousDayData = dailyData[dailyData.length - 1];
 
       const changes = this.calculateChanges(
@@ -835,23 +978,23 @@ document.addEventListener('DOMContentLoaded', () => {
       );
 
       currentRow.innerHTML = `
-        <td>${dateString}, ${timeString}</td>
-        <td>${Math.round(
-          currentDayData.views
-        ).toLocaleString()} <span class="change ${changes.views.class}">(${
+	    <td>${dateString}, ${timeString}</td>
+	    <td>${Math.round(
+        currentDayData.views
+      ).toLocaleString()} <span class="change ${changes.views.class}">(${
         changes.views.change
       })</span></td>
-        <td>${Math.round(
-          currentDayData.likes
-        ).toLocaleString()} <span class="change ${changes.likes.class}">(${
+	    <td>${Math.round(
+        currentDayData.likes
+      ).toLocaleString()} <span class="change ${changes.likes.class}">(${
         changes.likes.change
       })</span></td>
-        <td>${Math.round(
-          currentDayData.comments
-        ).toLocaleString()} <span class="change ${changes.comments.class}">(${
+	    <td>${Math.round(
+        currentDayData.comments
+      ).toLocaleString()} <span class="change ${changes.comments.class}">(${
         changes.comments.change
       })</span></td>
-      `;
+	  `;
 
       tableBody.insertBefore(currentRow, tableBody.firstChild);
     },
@@ -860,11 +1003,14 @@ document.addEventListener('DOMContentLoaded', () => {
       for (let index = dailyData.length - 1; index >= 0; index--) {
         const entry = dailyData[index];
         const row = document.createElement('tr');
-        const date = new Date(useTimestamp ? entry.timestamp : entry.time);
 
-        if (useTimestamp) date.setDate(date.getDate() - 1);
+        const date = luxon.DateTime.fromISO(
+          useTimestamp ? entry.timestamp : entry.time
+        ).setZone('America/New_York');
 
-        const { dateString } = this.formatDateTime(date);
+        const displayDate = useTimestamp ? date : date;
+
+        const { dateString } = this.formatDateTimeWithLuxon(displayDate);
         const changes = this.calculateChanges(
           entry,
           dailyData[index - 1],
@@ -909,6 +1055,12 @@ document.addEventListener('DOMContentLoaded', () => {
           })
         : null;
 
+      return { dateString, timeString };
+    },
+
+    formatDateTimeWithLuxon(luxonDateTime, includeTime = false) {
+      const dateString = luxonDateTime.toFormat('ccc, MMM d, yyyy');
+      const timeString = includeTime ? luxonDateTime.toFormat('HH:mm') : null;
       return { dateString, timeString };
     },
 
@@ -960,12 +1112,51 @@ document.addEventListener('DOMContentLoaded', () => {
       );
       DOM.searchInput.addEventListener('input', this.handleSearch);
       document.addEventListener('click', this.handleClickOutside);
+
+      const createFadedColor = hexColor => {
+        const hex = hexColor.replace('#', '');
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+
+        const fadedR = Math.round(r + (255 - r) * 0.2);
+        const fadedG = Math.round(g + (255 - g) * 0.2);
+        const fadedB = Math.round(b + (255 - b) * 0.2);
+
+        return `rgb(${fadedR}, ${fadedG}, ${fadedB})`;
+      };
+
+      const seriesColors = {
+        0: createFadedColor(CONFIG.seriesColors.views),
+        1: createFadedColor(CONFIG.seriesColors.likes),
+        2: createFadedColor(CONFIG.seriesColors.comments),
+        3: createFadedColor(CONFIG.seriesColors.uploads),
+      };
+
       document.querySelectorAll('.stat-card').forEach((card, index) => {
         card.addEventListener('click', () => {
+          document.querySelectorAll('.stat-card').forEach(c => {
+            c.classList.remove('active');
+            c.style.removeProperty('--active-card-color');
+          });
+
+          card.classList.add('active');
+          card.style.setProperty('--active-card-color', seriesColors[index]);
+
           AppState.selectedSeriesIndex = index;
           ChartManager.redrawWithDelay();
         });
       });
+
+      const initialCard =
+        document.querySelectorAll('.stat-card')[AppState.selectedSeriesIndex];
+      if (initialCard) {
+        initialCard.classList.add('active');
+        initialCard.style.setProperty(
+          '--active-card-color',
+          seriesColors[AppState.selectedSeriesIndex]
+        );
+      }
     },
 
     handleSearch(e) {
@@ -1101,7 +1292,11 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(response => response.json())
         .then(combinedData => {
           AppState.allData = {
-            timestamps: combinedData.map(entry => new Date(entry.time)),
+            timestamps: combinedData.map(entry =>
+              luxon.DateTime.fromISO(entry.time)
+                .setZone('America/New_York')
+                .toJSDate()
+            ),
             views: combinedData.map(entry => entry.views),
             likes: combinedData.map(entry => entry.likes),
             comments: combinedData.map(entry => entry.comments),
@@ -1152,7 +1347,11 @@ document.addEventListener('DOMContentLoaded', () => {
           );
 
           AppState.allData = {
-            timestamps: filteredStats.map(stat => new Date(stat.timestamp)),
+            timestamps: filteredStats.map(stat =>
+              luxon.DateTime.fromISO(stat.timestamp)
+                .setZone('America/New_York')
+                .toJSDate()
+            ),
             views: filteredStats.map(stat => Math.round(stat.views)),
             likes: filteredStats.map(stat => Math.round(stat.likes)),
             comments: filteredStats.map(stat => Math.round(stat.comments)),
@@ -1184,13 +1383,21 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.videoLink.href = `https://www.youtube.com/watch?v=${video.videoId}`;
       elements.videoLink.textContent = Utils.addCommasToTitle(video.title);
 
-      const uploadDate = new Date(video.uploadTime);
-      elements.uploadDate.textContent = `Uploaded on: ${uploadDate.toLocaleDateString()} at ${uploadDate.toLocaleTimeString()}`;
+      const uploadDate = luxon.DateTime.fromISO(video.uploadTime).setZone(
+        'America/New_York'
+      );
+      elements.uploadDate.textContent = `Uploaded on: ${uploadDate.toFormat(
+        'M/d/yyyy'
+      )} at ${uploadDate.toFormat('h:mm:ss a')} EST`;
 
-      const lastUpdatedDate = new Date(video.lastUpdated);
+      const lastUpdatedDate = luxon.DateTime.fromISO(video.lastUpdated).setZone(
+        'America/New_York'
+      );
       const lastUpdatedSpan = document.createElement('span');
       lastUpdatedSpan.classList.add('last-updated');
-      lastUpdatedSpan.textContent = ` (Stats last updated: ${lastUpdatedDate.toLocaleDateString()} at ${lastUpdatedDate.toLocaleTimeString()})`;
+      lastUpdatedSpan.textContent = ` (Stats last updated: ${lastUpdatedDate.toFormat(
+        'M/d/yyyy'
+      )} at ${lastUpdatedDate.toFormat('h:mm:ss a')} EST)`;
       elements.uploadDate.appendChild(lastUpdatedSpan);
 
       elements.duration.textContent = `Duration: ${video.stats[0].duration}`;
@@ -1218,7 +1425,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const timestamps = AppState.allData.timestamps
         .map((t, i) => ({
-          date: new Date(t),
+          date: luxon.DateTime.fromJSDate(new Date(t))
+            .setZone('America/New_York')
+            .toJSDate(),
           views: Math.round(AppState.allData.views[i]),
           likes: Math.round(AppState.allData.likes[i]),
           comments: Math.round(AppState.allData.comments[i]),
@@ -1230,38 +1439,49 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
     generateCSV(timestamps) {
-      const start = new Date(timestamps[0].date);
-      start.setMinutes(0, 0, 0);
-      const end = new Date(timestamps[timestamps.length - 1].date);
-      end.setMinutes(0, 0, 0);
+      const estTimestamps = timestamps.map(entry => ({
+        ...entry,
+        date: luxon.DateTime.fromJSDate(entry.date).setZone('America/New_York'),
+      }));
+
+      const start = estTimestamps[0].date.set({
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+      });
+      const end = estTimestamps[estTimestamps.length - 1].date.set({
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+      });
 
       const fullRange = [];
-      const currentTime = new Date(start);
+      let currentTime = start;
 
       while (currentTime <= end) {
-        fullRange.push(new Date(currentTime));
-        currentTime.setHours(currentTime.getHours() + 1);
+        fullRange.push(currentTime);
+        currentTime = currentTime.plus({ hours: 1 });
       }
 
       const dataMap = new Map();
-      timestamps.forEach(entry => {
-        const hourKey = entry.date.toISOString().slice(0, 13);
+      estTimestamps.forEach(entry => {
+        const hourKey = entry.date.toFormat('yyyy-MM-dd-HH');
         dataMap.set(hourKey, entry);
       });
 
       let csvContent =
-        'data:text/csv;charset=utf-8,Timestamp,Views,Likes,Comments\n';
+        'data:text/csv;charset=utf-8,Timestamp (EST),Views,Likes,Comments\n';
 
       fullRange.forEach(time => {
-        const hourKey = time.toISOString().slice(0, 13);
+        const hourKey = time.toFormat('yyyy-MM-dd-HH');
         const entry = dataMap.get(hourKey);
 
         if (entry) {
-          csvContent += `${time.toISOString()},${entry.views},${entry.likes},${
+          csvContent += `${time.toISO()},${entry.views},${entry.likes},${
             entry.comments
           }\n`;
         } else {
-          csvContent += `${time.toISOString()},,,\n`;
+          csvContent += `${time.toISO()},,,\n`;
         }
       });
 

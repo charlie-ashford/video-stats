@@ -338,22 +338,44 @@ header h1 {
   background-color: var(--card-background-color);
   border-radius: var(--border-radius);
   padding: var(--card-padding);
-  border: 1px solid var(--highlight-border-color);
+  border: 2px solid var(--highlight-border-color);
   text-align: center;
-  transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s,
-    background-color 0.3s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1rem;
-  box-shadow: 0 4px 20px var(--hover-shadow-color);
-  min-height: 130px;
+  box-shadow: 0 4px 20px var(--hover-shadow-color),
+    0 1px 4px rgba(0, 0, 0, 0.05);
+  min-height: 140px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
 }
 
 .stat-card:hover {
-  box-shadow: 0 12px 30px var(--hover-shadow-color);
+  transform: scale(1.02);
+  box-shadow: 0 16px 40px var(--hover-shadow-color),
+    0 8px 20px rgba(0, 0, 0, 0.1);
   border-color: var(--hover-border-color);
   background-color: var(--hover-card-background);
+}
+
+.stat-card.active {
+  border-color: var(--active-card-color, var(--primary-color));
+  background-color: var(--active-card-color, var(--primary-color));
+  color: #ffffff;
+  transform: translateY(-1px) scale(1.02);
+  opacity: 0.9;
+}
+
+.stat-card.active h3,
+.stat-card.active .odometer {
+  color: #ffffff;
+}
+
+.stat-card.active h3 i {
+  color: #ffffff;
 }
 
 .stat-card h3 {
@@ -364,11 +386,13 @@ header h1 {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  transition: color 0.3s;
 }
 
 .stat-card h3 i {
   color: var(--primary-color);
   font-size: 1.35rem;
+  transition: color 0.3s;
 }
 
 .stat-card .odometer {
@@ -383,12 +407,13 @@ header h1 {
   background-color: var(--card-background-color);
   border-radius: var(--border-radius);
   padding: var(--card-padding);
-  border: 1px solid var(--highlight-border-color);
+  border: 2px solid var(--highlight-border-color);
   width: 100%;
   max-width: 1280px;
   margin: 0 auto 3rem auto;
-  box-shadow: 0 4px 20px var(--hover-shadow-color);
-  transition: background-color 0.3s, box-shadow 0.3s;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 #videoChart {
@@ -402,7 +427,6 @@ header h1 {
   background-color: var(--card-background-color);
   border-radius: var(--border-radius);
   overflow: hidden;
-  box-shadow: 0 4px 20px var(--hover-shadow-color);
   margin: 0;
   transition: background-color 0.3s, box-shadow 0.3s;
 }
@@ -453,7 +477,7 @@ header h1 {
 }
 
 .daily-stats-table tr {
-  transition: background-color 0.3s, transform 0.3s;
+  transition: background-color 0.3s;
 }
 
 .daily-stats-table tr:nth-child(even) {

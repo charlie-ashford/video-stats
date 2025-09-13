@@ -1477,10 +1477,10 @@ const exportManager = {
   async initialize() {
     document
       .getElementById('exportButton')
-      .addEventListener('click', this.exportToCSV);
+      .addEventListener('click', () => this.exportToCSV());
     document
       .querySelector('.table-responsive')
-      .addEventListener('wheel', this.handleTableScroll);
+      .addEventListener('wheel', e => this.handleTableScroll(e));
   },
 };
 

@@ -885,23 +885,22 @@ const tableManager = {
     };
 
     const determineClass = (currentChange, previousChange) => {
-      return currentChange > previousChange ? 'positive' : 'negative';
+      return currentChange >= previousChange ? 'positive' : 'negative';
     };
 
     const result = {};
     ['views', 'likes', 'comments'].forEach(metric => {
+      const currentChange = current[metric] - (previous?.[metric] || 0);
+      const previousChange =
+        previous && index > 1
+          ? (previous[metric] || 0) - (dailyData[index - 2]?.[metric] || 0)
+          : 0;
+
       result[metric] = {
         change: previous
           ? calculateChange(current[metric], previous[metric])
           : '',
-        class:
-          index > 1
-            ? determineClass(
-                current[metric] - (previous?.[metric] || 0),
-                (previous?.[metric] || 0) -
-                  (dailyData[index - 2]?.[metric] || 0)
-              )
-            : '',
+        class: previous ? determineClass(currentChange, previousChange) : '',
       };
     });
 
@@ -937,7 +936,7 @@ const tableManager = {
       currentDayData,
       previousDayData,
       dailyData,
-      dailyData.length - 1
+      dailyData.length
     );
 
     currentRow.innerHTML = `

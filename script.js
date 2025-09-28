@@ -1684,18 +1684,19 @@ const Loader = {
       }
     } else {
       Dom.setView('video');
-
-      const uploadCard = Dom.get('uploadCountCard');
-      if (uploadCard) uploadCard.style.display = 'flex';
-
-      const grid = document.querySelector('.stats-grid');
-      if (grid) grid.classList.remove('three-columns');
+      Dom.hide('videoInfoCard');
 
       const container = Dom.get('videoChart');
       if (container) {
         container.innerHTML =
           '<div style="text-align:center;padding:40px;">Loading channel data...</div>';
       }
+
+      const uploadCard = Dom.get('uploadCountCard');
+      if (uploadCard) uploadCard.style.display = 'flex';
+
+      const grid = document.querySelector('.stats-grid');
+      if (grid) grid.classList.remove('three-columns');
 
       try {
         const endpoint =
@@ -1740,6 +1741,12 @@ const Loader = {
 
     Dom.setView('video');
 
+    const container = Dom.get('videoChart');
+    if (container) {
+      container.innerHTML =
+        '<div style="text-align:center;padding:40px;">Loading video data...</div>';
+    }
+
     const uploadCard = Dom.get('uploadCountCard');
     if (uploadCard) uploadCard.style.display = 'none';
 
@@ -1757,12 +1764,6 @@ const Loader = {
     }
 
     Dom.removeImg();
-
-    const container = Dom.get('videoChart');
-    if (container) {
-      container.innerHTML =
-        '<div style="text-align:center;padding:40px;">Loading video data...</div>';
-    }
 
     try {
       let endpoint = Config.api.videoStats.byChannel(channelId, videoId);

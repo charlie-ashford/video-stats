@@ -1,67 +1,72 @@
-const CONFIG = {
+const Config = {
   api: {
-    videos: 'https://api.communitrics.com/videos/all',
-    videoStats: 'https://api.communitrics.com/videostats/',
+    baseUrl: 'https://api.communitrics.com',
+    videos: {
+      all: 'https://api.communitrics.com/videos/all',
+      byChannel: channel =>
+        `https://api.communitrics.com/videos/${channel}/all`,
+    },
+    videoStats: {
+      base: 'https://api.communitrics.com/videoStats/',
+      byChannel: (channel, videoId) =>
+        `https://api.communitrics.com/videoStats/${channel}/${videoId}`,
+    },
+    rankings: 'https://api.communitrics.com/videos/top10',
+    combinedHistory: {
+      mrbeast: 'https://api.communitrics.com/combined-history',
+      byChannel: channel =>
+        `https://api.communitrics.com/combined-history-${channel}`,
+    },
   },
   channels: [
     {
       id: 'mrbeast',
       name: 'MrBeast',
-      endpoint: 'https://api.communitrics.com/combined-history',
       avatar: 'https://www.banner.yt/UCX6OQ3DkcsbYNE6H8uQQuVA/avatar',
     },
     {
-      id: 'mrbeast2',
+      id: 'mb2',
       name: 'MrBeast 2',
-      endpoint: 'https://api.communitrics.com/combined-history-mb2',
       avatar: 'https://www.banner.yt/UC4-79UOlP48-QNGgCko5p2g/avatar',
     },
     {
-      id: 'mrbeastgaming',
+      id: 'mbgaming',
       name: 'MrBeast Gaming',
-      endpoint: 'https://api.communitrics.com/combined-history-mbgaming',
       avatar: 'https://www.banner.yt/UCIPPMRA040LQr5QPyJEbmXA/avatar',
     },
     {
-      id: 'mrbeastreacts',
+      id: 'mbreacts',
       name: 'Beast Reacts',
-      endpoint: 'https://api.communitrics.com/combined-history-mbreacts',
       avatar: 'https://www.banner.yt/UCUaT_39o1x6qWjz7K2pWcgw/avatar',
     },
     {
-      id: 'mrbeastphilanthropy',
+      id: 'mbphilanthropy',
       name: 'Beast Philanthropy',
-      endpoint: 'https://api.communitrics.com/combined-history-mbphilanthropy',
       avatar: 'https://www.banner.yt/UCAiLfjNXkNv24uhpzUgPa6A/avatar',
     },
     {
-      id: 'beastanimations',
+      id: 'mbanimations',
       name: 'Beast Animations',
-      endpoint: 'https://api.communitrics.com/combined-history-mbanimations',
       avatar: 'https://www.banner.yt/UCZzvDDvaYti8Dd8bLEiSoyQ/avatar',
     },
     {
-      id: 'moremrbeastgaming',
+      id: 'mmbg',
       name: 'More MrBeast Gaming',
-      endpoint: 'https://api.communitrics.com/combined-history-mmbg',
       avatar: 'https://www.banner.yt/UCzfPgw5WN9bvMiBz-JJYVyw/avatar',
     },
     {
       id: 'cocomelon',
       name: 'Cocomelon - Nursery Rhymes',
-      endpoint: 'https://api.communitrics.com/combined-history-cocomelon',
       avatar: 'https://www.banner.yt/UCbCmjCuTUZos6Inko4u57UQ/avatar',
     },
     {
       id: 'ronaldo',
       name: 'UR · Cristiano',
-      endpoint: 'https://api.communitrics.com/combined-history-ronaldo',
       avatar: 'https://www.banner.yt/UCtxD0x6AuNNqdXO9Wp5GHew/avatar',
     },
     {
       id: 'taylor',
       name: 'Taylor Swift',
-      endpoint: 'https://api.communitrics.com/combined-history-taylor',
       avatar: 'https://www.banner.yt/UCANLZYMidaCbLQFWXBC95Jg/avatar',
     },
   ],
@@ -76,142 +81,203 @@ const CONFIG = {
     chartHeights: { mobile: 280, tablet: 350, desktop: 400, large: 450 },
     maxDataPoints: { mobile: 500, tablet: 1000, desktop: 2000, large: 3000 },
   },
+  rankings: { defaultCount: 10, maxCount: 25, defaultHours: 24, maxHours: 168 },
 };
 
-const state = {
+const State = {
   chart: null,
   rawData: {},
   processedData: {},
-  currentVideoId: 'mrbeast',
-  selectedSeriesIndex: 0,
+  currentEntityId: 'mrbeast',
+  currentChannel: 'mrbeast',
+  selectedMetricIndex: 0,
   isChartReady: false,
-  pendingYRange: null,
+  pendingYAxisRange: null,
+  isRankingsView: false,
+  rankingsSettings: {
+    videoCount: Config.rankings.defaultCount,
+    timePeriod: Config.rankings.defaultHours,
+  },
+  cachedRankings: new Map(),
+  lastFetchTime: 0,
 
-  getCurrentBreakpoint() {
-    const width = window.innerWidth;
-    if (width <= CONFIG.responsive.breakpoints.mobile) return 'mobile';
-    if (width <= CONFIG.responsive.breakpoints.tablet) return 'tablet';
-    if (width <= CONFIG.responsive.breakpoints.desktop) return 'desktop';
+  getBreakpoint() {
+    const w = window.innerWidth || 1024;
+    const bp = Config.responsive.breakpoints;
+    if (w <= bp.mobile) return 'mobile';
+    if (w <= bp.tablet) return 'tablet';
+    if (w <= bp.desktop) return 'desktop';
     return 'large';
   },
 
   isMobile() {
-    return this.getCurrentBreakpoint() === 'mobile';
+    return this.getBreakpoint() === 'mobile';
   },
-
   getMaxDataPoints() {
-    return CONFIG.responsive.maxDataPoints[this.getCurrentBreakpoint()];
+    return Config.responsive.maxDataPoints[this.getBreakpoint()];
   },
-
   getChartHeight() {
-    return CONFIG.responsive.chartHeights[this.getCurrentBreakpoint()];
+    return Config.responsive.chartHeights[this.getBreakpoint()];
   },
-
-  getCurrentSeriesName() {
-    const names = ['views', 'likes', 'comments', 'uploads'];
-    return names[this.selectedSeriesIndex];
+  getMetricName() {
+    return (
+      ['views', 'likes', 'comments', 'uploads'][this.selectedMetricIndex] ||
+      'views'
+    );
   },
-
-  isCountBasedMetric() {
-    return this.selectedSeriesIndex < 3;
+  isNumericMetric() {
+    return this.selectedMetricIndex < 3;
   },
 
   reset() {
     this.rawData = {};
     this.processedData = {};
     this.isChartReady = false;
-    this.pendingYRange = null;
+    this.pendingYAxisRange = null;
   },
 };
 
-const dom = {
-  getCSSVariable(name) {
-    return getComputedStyle(document.body).getPropertyValue(name).trim();
+const Dom = {
+  cache: new Map(),
+
+  getCssVar(name) {
+    const value = getComputedStyle(document.documentElement)
+      .getPropertyValue(name)
+      .trim();
+    return (
+      value || (name === '--card-background-color' ? '#1e1e1e' : '#db421f')
+    );
   },
 
-  async createProfileImage(src, alt = 'Profile Image') {
+  get(id) {
+    if (this.cache.has(id)) {
+      const cached = this.cache.get(id);
+      if (document.contains(cached)) return cached;
+      this.cache.delete(id);
+    }
+    const el = document.getElementById(id);
+    if (el) this.cache.set(id, el);
+    return el;
+  },
+
+  create(tag, className, text = '') {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text) el.textContent = text;
+    return el;
+  },
+
+  createImg(src, alt = 'Profile Image') {
     const img = document.createElement('img');
     img.src = src;
     img.alt = alt;
     img.classList.add('profile-image');
+    img.loading = 'eager';
     return img;
   },
 
-  async removeExistingProfileImage() {
+  removeImg() {
     const existing = document.querySelector('header img.profile-image');
     if (existing) existing.remove();
   },
 
-  async updateBrowserURL(path) {
-    const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?data=${path}`;
-    window.history.pushState({ path: newUrl }, '', newUrl);
+  updateUrl(path) {
+    const newUrl = `${window.location.origin}${window.location.pathname}?data=${path}`;
+    window.history.replaceState({ path }, '', newUrl);
   },
 
-  debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
+  debounce(callback, delay) {
+    let timeoutId;
+    return function (...args) {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => callback.apply(this, args), delay);
     };
+  },
+
+  show(id) {
+    const el = this.get(id);
+    if (el) {
+      if (id === 'videoInfoCard') {
+        el.style.display = 'flex';
+      } else {
+        el.style.display = 'block';
+      }
+    }
+  },
+  hide(id) {
+    const el = this.get(id);
+    if (el) el.style.display = 'none';
+  },
+
+  setView(type) {
+    if (type === 'rankings') {
+      this.show('rankingsView');
+      this.hide('videoStatsView');
+    } else {
+      this.hide('rankingsView');
+      this.show('videoStatsView');
+    }
   },
 };
 
-const formatters = {
-  addCommasToNumber(num) {
-    return num.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,');
-  },
+const Format = {
+  addCommas: (() => {
+    const formatter = new Intl.NumberFormat('en-US');
+    return num => formatter.format(num);
+  })(),
 
   addCommasToTitle(title) {
-    return title.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,');
+    return title ? title.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,') : '';
   },
 
-  formatCompactNumber(value) {
-    if (value >= 1000000000) {
-      return (value / 1000000000).toFixed(1) + 'B';
-    } else if (value >= 1000000) {
-      return (value / 1000000).toFixed(1) + 'M';
-    } else if (value >= 1000) {
-      return (value / 1000).toFixed(1) + 'K';
-    }
-    return value;
+  compact(value) {
+    if (typeof value !== 'number') return '0';
+    if (value >= 1e9) return (value / 1e9).toFixed(1) + 'B';
+    if (value >= 1e6) return (value / 1e6).toFixed(1) + 'M';
+    if (value >= 1e3) return (value / 1e3).toFixed(1) + 'K';
+    return value.toString();
   },
 
-  formatAxisLabel(value, tickInterval) {
-    const absValue = Math.abs(value);
-
-    if (absValue >= 1000000000) {
-      const billions = value / 1000000000;
-      const decimalPlaces = tickInterval && tickInterval < 10000000 ? 3 : 1;
-      return billions.toFixed(decimalPlaces) + 'B';
-    } else if (absValue >= 1000000) {
-      const millions = value / 1000000;
-      const decimalPlaces = tickInterval && tickInterval < 10000 ? 2 : 1;
-      return millions.toFixed(decimalPlaces) + 'M';
-    } else if (absValue >= 1000) {
-      const thousands = value / 1000;
-      const decimalPlaces = tickInterval && tickInterval < 10 ? 2 : 1;
-      return thousands.toFixed(decimalPlaces) + 'K';
+  axis(value, tickInterval) {
+    const abs = Math.abs(value);
+    if (abs >= 1e9) {
+      const billions = value / 1e9;
+      const decimals = tickInterval && tickInterval < 1e7 ? 3 : 1;
+      return billions.toFixed(decimals) + 'B';
+    } else if (abs >= 1e6) {
+      const millions = value / 1e6;
+      const decimals = tickInterval && tickInterval < 1e4 ? 2 : 1;
+      return millions.toFixed(decimals) + 'M';
+    } else if (abs >= 1e3) {
+      const thousands = value / 1e3;
+      const decimals = tickInterval && tickInterval < 10 ? 2 : 1;
+      return thousands.toFixed(decimals) + 'K';
     }
     return Math.round(value).toLocaleString();
   },
 
-  formatDateTime(luxonDateTime) {
+  dateTime(luxonDateTime) {
+    if (!luxonDateTime || typeof luxonDateTime.toFormat !== 'function') {
+      return { dateString: '', timeString: '' };
+    }
     return {
       dateString: luxonDateTime.toFormat('ccc, MMM d, yyyy'),
+      timeString: luxonDateTime.toFormat('HH:mm:ss'),
     };
+  },
+
+  pluralize(count, singular, plural) {
+    return count === 1 ? singular : plural || `${singular}s`;
   },
 };
 
-const dataProcessor = {
-  async transformRawData(rawData) {
+const DataProcessor = {
+  transform(rawData) {
     const processed = {
       timestamps: [],
       series: { views: [], likes: [], comments: [], uploads: [] },
     };
+    if (!Array.isArray(rawData)) return processed;
 
     rawData.forEach(entry => {
       let timestamp;
@@ -223,9 +289,7 @@ const dataProcessor = {
         timestamp = luxon.DateTime.fromISO(entry.time)
           .setZone('America/New_York')
           .toMillis();
-      } else {
-        return;
-      }
+      } else return;
 
       processed.timestamps.push(timestamp);
       processed.series.views.push(Math.round(entry.views || 0));
@@ -240,35 +304,26 @@ const dataProcessor = {
     return processed;
   },
 
-  async downsampleForPerformance(timestamps, values) {
-    if (!timestamps || !values || timestamps.length !== values.length) {
+  downsample(timestamps, values) {
+    if (!timestamps || !values || timestamps.length !== values.length)
       return [];
-    }
-
     const dataPoints = timestamps.map((time, i) => [time, values[i]]);
+    const maxPoints = State.getMaxDataPoints();
+    if (dataPoints.length <= maxPoints) return dataPoints;
 
-    if (dataPoints.length <= state.getMaxDataPoints()) {
-      return dataPoints;
-    }
-
-    const step = Math.floor(dataPoints.length / state.getMaxDataPoints());
+    const step = Math.floor(dataPoints.length / maxPoints);
     const result = [];
-
     for (let i = 0; i < dataPoints.length; i += step) {
       result.push(dataPoints[i]);
     }
-
     if (result[result.length - 1] !== dataPoints[dataPoints.length - 1]) {
       result.push(dataPoints[dataPoints.length - 1]);
     }
-
     return result;
   },
 
-  async calculateOptimalYRange(seriesData, xMin = null, xMax = null) {
-    if (!seriesData || seriesData.length === 0) {
-      return { min: 0, max: 100 };
-    }
+  calcYRange(seriesData, xMin = null, xMax = null) {
+    if (!seriesData || seriesData.length === 0) return { min: 0, max: 100 };
 
     let visibleData = seriesData;
     if (xMin !== null && xMax !== null) {
@@ -276,71 +331,48 @@ const dataProcessor = {
         const x = Array.isArray(point) ? point[0] : point.x;
         return x >= xMin && x <= xMax;
       });
-
-      if (visibleData.length === 0) {
-        visibleData = seriesData;
-      }
+      if (visibleData.length === 0) visibleData = seriesData;
     }
 
     const yValues = visibleData
       .map(point => (Array.isArray(point) ? point[1] : point.y))
       .filter(val => typeof val === 'number' && !isNaN(val) && isFinite(val));
 
-    if (yValues.length === 0) {
-      return { min: 0, max: 100 };
-    }
+    if (yValues.length === 0) return { min: 0, max: 100 };
 
-    const rawMin = Math.min(...yValues);
-    const rawMax = Math.max(...yValues);
-
-    const range = rawMax - rawMin;
+    const minVal = Math.min(...yValues);
+    const maxVal = Math.max(...yValues);
+    const range = maxVal - minVal;
     const padding = Math.max(range * 0.05, 1);
 
-    let calculatedMin = rawMin - padding;
-    let calculatedMax = rawMax + padding;
+    let calcMin = minVal - padding;
+    let calcMax = maxVal + padding;
 
-    const isCountBased = state.isCountBasedMetric();
+    if (State.isNumericMetric() && calcMin < 0 && minVal >= 0) calcMin = 0;
+    if (calcMax <= calcMin)
+      calcMax = calcMin + (calcMin > 0 ? calcMin * 0.1 : 100);
 
-    if (isCountBased && calculatedMin < 0 && rawMin >= 0) {
-      calculatedMin = 0;
-    }
-
-    if (calculatedMax <= calculatedMin) {
-      calculatedMax =
-        calculatedMin + (calculatedMin > 0 ? calculatedMin * 0.1 : 100);
-    }
-
-    return { min: calculatedMin, max: calculatedMax };
+    return { min: calcMin, max: calcMax };
   },
 
-  async getCurrentSeriesData() {
-    const seriesName = state.getCurrentSeriesName();
-    const rawValues = state.processedData.series[seriesName];
-
-    if (!rawValues || !state.processedData.timestamps) {
-      return [];
-    }
-
-    return await this.downsampleForPerformance(
-      state.processedData.timestamps,
-      rawValues
-    );
+  getCurrentSeries() {
+    const metric = State.getMetricName();
+    const values = State.processedData.series[metric];
+    if (!values || !State.processedData.timestamps) return [];
+    return this.downsample(State.processedData.timestamps, values);
   },
 
-  async processDailyData(data, useTimestamp = false) {
+  processDaily(data, useTimestamp = false) {
     const dailyData = [];
     const processedDates = new Set();
+    if (!Array.isArray(data)) return dailyData;
 
     data.forEach(entry => {
-      const entryDateTime = luxon.DateTime.fromISO(
+      const entryDT = luxon.DateTime.fromISO(
         useTimestamp ? entry.timestamp : entry.time
       ).setZone('America/New_York');
-
-      const dateKey = entryDateTime.toFormat('yyyy-MM-dd');
-
-      if (processedDates.has(dateKey)) {
-        return;
-      }
+      const dateKey = entryDT.toFormat('yyyy-MM-dd');
+      if (processedDates.has(dateKey)) return;
 
       const sameDayEntries = data.filter(e => {
         const dt = luxon.DateTime.fromISO(
@@ -349,58 +381,51 @@ const dataProcessor = {
         return dt.toFormat('yyyy-MM-dd') === dateKey;
       });
 
-      let closestToMidnight = sameDayEntries[0];
-      let minDistanceFromMidnight = Infinity;
+      let closest = sameDayEntries[0];
+      let minDist = Infinity;
 
       sameDayEntries.forEach(e => {
         const dt = luxon.DateTime.fromISO(
           useTimestamp ? e.timestamp : e.time
         ).setZone('America/New_York');
-
         const minutesFromMidnight = dt.hour * 60 + dt.minute;
-
-        if (minutesFromMidnight < minDistanceFromMidnight) {
-          minDistanceFromMidnight = minutesFromMidnight;
-          closestToMidnight = e;
+        if (minutesFromMidnight < minDist) {
+          minDist = minutesFromMidnight;
+          closest = e;
         }
       });
 
-      if (closestToMidnight) {
-        const adjustedEntry = { ...closestToMidnight };
-
-        const originalDateTime = luxon.DateTime.fromISO(
-          useTimestamp ? adjustedEntry.timestamp : adjustedEntry.time
+      if (closest) {
+        const adjusted = { ...closest };
+        const originalDT = luxon.DateTime.fromISO(
+          useTimestamp ? adjusted.timestamp : adjusted.time
         ).setZone('America/New_York');
-
-        const adjustedDateTime = originalDateTime.minus({ days: 1 });
+        const adjustedDT = originalDT.minus({ days: 1 });
 
         if (useTimestamp) {
-          adjustedEntry.timestamp = adjustedDateTime.toISO();
+          adjusted.timestamp = adjustedDT.toISO();
         } else {
-          adjustedEntry.time = adjustedDateTime.toISO();
+          adjusted.time = adjustedDT.toISO();
         }
 
-        adjustedEntry._originalTime = useTimestamp
-          ? closestToMidnight.timestamp
-          : closestToMidnight.time;
-
-        dailyData.push(adjustedEntry);
+        adjusted._originalTime = useTimestamp
+          ? closest.timestamp
+          : closest.time;
+        dailyData.push(adjusted);
         processedDates.add(dateKey);
       }
     });
 
-    dailyData.sort((a, b) => {
+    return dailyData.sort((a, b) => {
       const dateA = new Date(useTimestamp ? a.timestamp : a.time);
       const dateB = new Date(useTimestamp ? b.timestamp : b.time);
       return dateA - dateB;
     });
-
-    return dailyData;
   },
 };
 
-const chartFactory = {
-  convertHexToRGB(hex) {
+const ChartBuilder = {
+  hexToRgb(hex) {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result
       ? {
@@ -408,11 +433,11 @@ const chartFactory = {
           g: parseInt(result[2], 16),
           b: parseInt(result[3], 16),
         }
-      : null;
+      : { r: 219, g: 66, b: 31 };
   },
 
-  createGradientFill(color) {
-    const rgb = this.convertHexToRGB(color);
+  gradient(color) {
+    const rgb = this.hexToRgb(color);
     return {
       linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
       stops: [
@@ -422,76 +447,56 @@ const chartFactory = {
     };
   },
 
-  async buildSeriesConfig() {
-    const seriesConfigs = [
-      {
-        name: 'Views',
-        key: 'views',
-        visible: state.selectedSeriesIndex === 0,
-      },
-      {
-        name: 'Likes',
-        key: 'likes',
-        visible: state.selectedSeriesIndex === 1,
-      },
+  series() {
+    const configs = [
+      { name: 'Views', key: 'views', visible: State.selectedMetricIndex === 0 },
+      { name: 'Likes', key: 'likes', visible: State.selectedMetricIndex === 1 },
       {
         name: 'Comments',
         key: 'comments',
-        visible: state.selectedSeriesIndex === 2,
+        visible: State.selectedMetricIndex === 2,
       },
     ];
 
-    if (state.processedData.series.uploads?.length > 0) {
-      seriesConfigs.push({
+    if (State.processedData.series.uploads?.length > 0) {
+      configs.push({
         name: 'Uploads',
         key: 'uploads',
-        visible: state.selectedSeriesIndex === 3,
+        visible: State.selectedMetricIndex === 3,
       });
     }
 
-    const results = [];
-    for (const config of seriesConfigs) {
-      const rawValues = state.processedData.series[config.key];
+    return configs.map(config => {
+      const rawValues = State.processedData.series[config.key];
       const seriesData = rawValues
-        ? await dataProcessor.downsampleForPerformance(
-            state.processedData.timestamps,
-            rawValues
-          )
+        ? DataProcessor.downsample(State.processedData.timestamps, rawValues)
         : [];
 
-      results.push({
+      return {
         name: config.name,
         data: seriesData,
         visible: config.visible,
-        color: CONFIG.colors[config.key],
-        fillColor: this.createGradientFill(CONFIG.colors[config.key]),
-        lineWidth: state.isMobile() ? 2 : 3,
-      });
-    }
-
-    return results;
+        color: Config.colors[config.key],
+        fillColor: this.gradient(Config.colors[config.key]),
+        lineWidth: State.isMobile() ? 2 : 3,
+      };
+    });
   },
 
-  async getEventHandlers() {
+  events() {
     return {
       load: function () {
-        state.isChartReady = true;
-
-        if (state.pendingYRange) {
-          const { min, max } = state.pendingYRange;
-          if (this.yAxis && this.yAxis[0]) {
-            this.yAxis[0].setExtremes(min, max, true, false);
-          }
-          state.pendingYRange = null;
+        State.isChartReady = true;
+        if (State.pendingYAxisRange) {
+          const { min, max } = State.pendingYAxisRange;
+          if (this.yAxis?.[0]) this.yAxis[0].setExtremes(min, max, true, false);
+          State.pendingYAxisRange = null;
         }
       },
-
       redraw: function () {
         if (
-          state.isCountBasedMetric() &&
-          this.yAxis &&
-          this.yAxis[0] &&
-          typeof this.yAxis[0].min === 'number' &&
+          State.isNumericMetric() &&
+          this.yAxis?.[0] &&
           this.yAxis[0].min < 0 &&
           this.yAxis[0].dataMin >= 0
         ) {
@@ -501,16 +506,16 @@ const chartFactory = {
     };
   },
 
-  async getXAxisConfig() {
+  xAxis() {
     return {
       title: {
         text: 'Time (EST)',
         style: {
-          color: dom.getCSSVariable('--text-color'),
-          fontSize: state.isMobile() ? '13px' : '16px',
+          color: Dom.getCssVar('--text-color'),
+          fontSize: State.isMobile() ? '13px' : '16px',
           fontWeight: '600',
         },
-        margin: state.isMobile() ? 15 : 20,
+        margin: State.isMobile() ? 15 : 20,
       },
       type: 'datetime',
       labels: {
@@ -518,53 +523,46 @@ const chartFactory = {
           const dt = luxon.DateTime.fromMillis(this.value, {
             zone: 'America/New_York',
           });
-
-          if (state.isMobile()) {
+          if (State.isMobile()) {
             return dt.toFormat('MM/dd<br/>HH:mm');
           } else {
             const range = this.axis.max - this.axis.min;
-            if (range <= 86400000) {
-              return dt.toFormat('HH:mm<br/>MM/dd');
-            } else if (range <= 604800000) {
-              return dt.toFormat('MM/dd<br/>HH:mm');
-            } else {
-              return dt.toFormat('MMM dd<br/>yyyy');
-            }
+            if (range <= 86400000) return dt.toFormat('HH:mm<br/>MM/dd');
+            if (range <= 604800000) return dt.toFormat('MM/dd<br/>HH:mm');
+            return dt.toFormat('MMM dd<br/>yyyy');
           }
         },
         style: {
-          color: dom.getCSSVariable('--text-color'),
-          fontSize: state.isMobile() ? '11px' : '13px',
+          color: Dom.getCssVar('--text-color'),
+          fontSize: State.isMobile() ? '11px' : '13px',
           fontWeight: '500',
         },
-        step: state.isMobile() ? 2 : 1,
+        step: State.isMobile() ? 2 : 1,
         rotation: 0,
         align: 'center',
       },
-      gridLineColor: dom.getCSSVariable('--border-color'),
+      gridLineColor: Dom.getCssVar('--border-color'),
       gridLineWidth: 1,
       gridLineDashStyle: 'Dash',
-      lineColor: dom.getCSSVariable('--border-color'),
+      lineColor: Dom.getCssVar('--border-color'),
       lineWidth: 2,
-      tickColor: dom.getCSSVariable('--border-color'),
+      tickColor: Dom.getCssVar('--border-color'),
       tickWidth: 1,
       tickLength: 5,
       minorTickLength: 3,
-      minorGridLineColor: dom.getCSSVariable('--border-color'),
+      minorGridLineColor: Dom.getCssVar('--border-color'),
       minorGridLineWidth: 0.5,
       minorGridLineDashStyle: 'Dot',
       events: {
-        afterSetExtremes: async function (e) {
-          if (!state.isMobile() && state.isChartReady && this.chart?.series) {
-            const activeSeries = this.chart.series[state.selectedSeriesIndex];
-
+        afterSetExtremes: function (e) {
+          if (!State.isMobile() && State.isChartReady && this.chart?.series) {
+            const activeSeries = this.chart.series[State.selectedMetricIndex];
             if (activeSeries?.data?.length > 0) {
-              const range = await dataProcessor.calculateOptimalYRange(
+              const range = DataProcessor.calcYRange(
                 activeSeries.data,
                 e.min || this.dataMin,
                 e.max || this.dataMax
               );
-
               if (this.chart.yAxis?.[0]) {
                 this.chart.yAxis[0].setExtremes(range.min, range.max, true, {
                   duration: 300,
@@ -578,279 +576,259 @@ const chartFactory = {
     };
   },
 
-  async getYAxisConfig(range) {
-    const isUploadsChart =
-      state.selectedSeriesIndex === 3 &&
-      state.processedData.series.uploads?.length > 0;
-
-    const yAxisConfig = {
+  yAxis(range) {
+    const isUploads =
+      State.selectedMetricIndex === 3 &&
+      State.processedData.series.uploads?.length > 0;
+    const config = {
       title: {
         text: 'Count',
         style: {
-          color: dom.getCSSVariable('--text-color'),
-          fontSize: state.isMobile() ? '13px' : '16px',
+          color: Dom.getCssVar('--text-color'),
+          fontSize: State.isMobile() ? '13px' : '16px',
           fontWeight: '600',
         },
-        margin: state.isMobile() ? 15 : 20,
+        margin: State.isMobile() ? 15 : 20,
       },
       labels: {
         style: {
-          color: dom.getCSSVariable('--text-color'),
-          fontSize: state.isMobile() ? '11px' : '13px',
+          color: Dom.getCssVar('--text-color'),
+          fontSize: State.isMobile() ? '11px' : '13px',
           fontWeight: '500',
         },
         formatter: function () {
-          if (isUploadsChart) {
-            return Math.round(this.value).toLocaleString();
-          } else {
-            return formatters.formatAxisLabel(
-              this.value,
-              this.axis.tickInterval
-            );
-          }
+          return isUploads
+            ? Math.round(this.value).toLocaleString()
+            : Format.axis(this.value, this.axis.tickInterval);
         },
         align: 'right',
         x: -5,
         y: 4,
       },
-      gridLineColor: dom.getCSSVariable('--border-color'),
+      gridLineColor: Dom.getCssVar('--border-color'),
       gridLineWidth: 1,
       gridLineDashStyle: 'Dash',
-      lineColor: dom.getCSSVariable('--border-color'),
+      lineColor: Dom.getCssVar('--border-color'),
       lineWidth: 2,
-      tickColor: dom.getCSSVariable('--border-color'),
+      tickColor: Dom.getCssVar('--border-color'),
       tickWidth: 1,
       tickLength: 5,
       minorTickLength: 3,
-      minorGridLineColor: dom.getCSSVariable('--border-color'),
+      minorGridLineColor: Dom.getCssVar('--border-color'),
       minorGridLineWidth: 0.5,
       minorGridLineDashStyle: 'Dot',
       min: range.min,
       max: range.max,
       startOnTick: true,
       endOnTick: true,
-      allowDecimals: !isUploadsChart,
+      allowDecimals: !isUploads,
       softMin: range.min,
       softMax: range.max,
     };
 
-    if (state.isCountBasedMetric() && range.min === 0) {
-      yAxisConfig.floor = 0;
-      yAxisConfig.minPadding = 0;
+    if (State.isNumericMetric() && range.min === 0) {
+      config.floor = 0;
+      config.minPadding = 0;
     }
 
-    return yAxisConfig;
+    return config;
   },
 
-  async getTooltipConfig() {
+  tooltip() {
     return {
-      backgroundColor: dom.getCSSVariable('--card-background-color'),
-      borderColor: dom.getCSSVariable('--border-color'),
+      backgroundColor: Dom.getCssVar('--card-background-color'),
+      borderColor: Dom.getCssVar('--border-color'),
       style: {
-        color: dom.getCSSVariable('--text-color'),
-        fontSize: state.isMobile() ? '12px' : '14px',
+        color: Dom.getCssVar('--text-color'),
+        fontSize: State.isMobile() ? '12px' : '14px',
       },
       formatter: function () {
-        const dateTime = luxon.DateTime.fromMillis(this.x, {
+        const dt = luxon.DateTime.fromMillis(this.x, {
           zone: 'America/New_York',
         });
-
-        const formattedDate = dateTime.toFormat('yyyy-MM-dd');
-        const formattedTime = dateTime.toFormat('HH:mm:ss');
-
-        let tooltipText = `<b>${formattedDate} ${formattedTime}</b><br>`;
-
+        const date = dt.toFormat('yyyy-MM-dd');
+        const time = dt.toFormat('HH:mm:ss');
+        let tooltip = `<b>${date} ${time}</b><br>`;
         for (const point of this.points) {
-          let label = point.series.name;
-          let value = point.y;
-          let formattedValue = state.isMobile()
-            ? formatters.formatCompactNumber(value)
-            : value.toLocaleString();
-          tooltipText += `${label}: ${formattedValue}<br>`;
+          const value = State.isMobile()
+            ? Format.compact(point.y)
+            : point.y.toLocaleString();
+          tooltip += `${point.series.name}: ${value}<br>`;
         }
-
-        return tooltipText;
+        return tooltip;
       },
       shared: true,
       useHTML: true,
       borderRadius: 10,
       shadow: true,
-      hideDelay: state.isMobile() ? 1000 : 500,
+      hideDelay: State.isMobile() ? 1000 : 500,
     };
   },
 };
 
-const chartManager = {
-  async validateData() {
-    if (!state.processedData.timestamps?.length) {
-      return false;
-    }
-
-    const currentSeriesData =
-      state.processedData.series[state.getCurrentSeriesName()];
-    return currentSeriesData && currentSeriesData.length > 0;
+const Charts = {
+  validate() {
+    if (!State.processedData.timestamps?.length) return false;
+    const currentSeries = State.processedData.series[State.getMetricName()];
+    return currentSeries && currentSeries.length > 0;
   },
 
-  async destroyExisting() {
-    if (state.chart) {
+  destroy() {
+    if (State.chart) {
       try {
-        state.chart.destroy();
+        State.chart.destroy();
       } catch (e) {}
-      state.chart = null;
+      State.chart = null;
     }
   },
 
   async create() {
-    const chartContainer = document.getElementById('videoChart');
-    chartContainer.innerHTML = '';
+    const container = Dom.get('videoChart');
+    if (!container) return false;
+    container.innerHTML = '';
 
-    if (!(await this.validateData())) {
-      chartContainer.innerHTML =
-        "<div style='text-align:center;padding:20px;'>No data available for the selected series.</div>";
+    if (!this.validate()) {
+      container.innerHTML =
+        "<div style='text-align:center;padding:20px;'>No data available for the selected metric.</div>";
       return false;
     }
 
-    const seriesConfig = await chartFactory.buildSeriesConfig();
-    const currentSeriesData = await dataProcessor.getCurrentSeriesData();
-    const yRange = await dataProcessor.calculateOptimalYRange(
-      currentSeriesData
-    );
+    const seriesConfig = ChartBuilder.series();
+    const currentSeries = DataProcessor.getCurrentSeries();
+    const yRange = DataProcessor.calcYRange(currentSeries);
 
-    if (!state.isChartReady) {
-      state.pendingYRange = yRange;
+    if (!State.isChartReady) State.pendingYAxisRange = yRange;
+    this.destroy();
+    State.isChartReady = false;
+
+    if (typeof Highcharts === 'undefined') {
+      container.innerHTML =
+        '<div style="text-align:center;padding:20px;color:red;">Chart library not loaded</div>';
+      return false;
     }
 
-    await this.destroyExisting();
-    state.isChartReady = false;
+    const cardBg = Dom.getCssVar('--card-background-color');
 
-    try {
-      state.chart = Highcharts.chart('videoChart', {
-        chart: {
-          type: 'area',
-          backgroundColor: dom.getCSSVariable('--card-background-color'),
-          style: {
-            fontFamily: "'Poppins', sans-serif",
-            fontSize: '14px',
+    State.chart = Highcharts.chart('videoChart', {
+      chart: {
+        type: 'area',
+        backgroundColor: cardBg,
+        style: { fontFamily: "'Poppins', sans-serif", fontSize: '14px' },
+        plotBackgroundColor: cardBg,
+        plotBorderColor: Dom.getCssVar('--border-color'),
+        plotBorderWidth: 1,
+        zoomType: 'x',
+        panning: { enabled: true, type: 'x' },
+        panKey: 'shift',
+        animation: State.isMobile()
+          ? false
+          : { duration: 600, easing: 'easeOutQuart' },
+        events: {
+          ...ChartBuilder.events(),
+          load: function () {
+            State.isChartReady = true;
+            if (State.pendingYAxisRange) {
+              const { min, max } = State.pendingYAxisRange;
+              if (this.yAxis?.[0])
+                this.yAxis[0].setExtremes(min, max, true, false);
+              State.pendingYAxisRange = null;
+            }
           },
-          plotBackgroundColor: dom.getCSSVariable('--card-background-color'),
-          plotBorderColor: dom.getCSSVariable('--border-color'),
-          plotBorderWidth: 1,
-          zoomType: 'x',
-          panning: { enabled: true, type: 'x' },
-          panKey: 'shift',
-          animation: state.isMobile()
+        },
+        height: State.getChartHeight(),
+        spacingBottom: State.isMobile() ? 15 : 30,
+        spacingTop: State.isMobile() ? 10 : 25,
+        spacingLeft: State.isMobile() ? 10 : 25,
+        spacingRight: State.isMobile() ? 10 : 25,
+        borderRadius: 12,
+      },
+      boost: { enabled: false },
+      title: {
+        text: seriesConfig[State.selectedMetricIndex]?.name || 'Chart',
+        style: {
+          color: Dom.getCssVar('--text-color'),
+          fontWeight: '700',
+          fontSize: State.isMobile() ? '16px' : '22px',
+          fontFamily: "'Poppins', sans-serif",
+        },
+        margin: State.isMobile() ? 15 : 30,
+        align: 'center',
+      },
+      credits: { enabled: false },
+      xAxis: ChartBuilder.xAxis(),
+      yAxis: ChartBuilder.yAxis(yRange),
+      series: seriesConfig,
+      legend: { enabled: false },
+      tooltip: ChartBuilder.tooltip(),
+      plotOptions: {
+        series: {
+          animation: State.isMobile()
             ? false
-            : {
-                duration: 600,
-                easing: 'easeOutQuart',
-              },
-          events: await chartFactory.getEventHandlers(),
-          height: state.getChartHeight(),
-          spacingBottom: state.isMobile() ? 15 : 30,
-          spacingTop: state.isMobile() ? 10 : 25,
-          spacingLeft: state.isMobile() ? 10 : 25,
-          spacingRight: state.isMobile() ? 10 : 25,
-          borderRadius: 12,
-        },
-        boost: { enabled: false },
-        title: {
-          text: seriesConfig[state.selectedSeriesIndex]?.name || 'Chart',
-          style: {
-            color: dom.getCSSVariable('--text-color'),
-            fontWeight: '700',
-            fontSize: state.isMobile() ? '16px' : '22px',
-            fontFamily: "'Poppins', sans-serif",
-          },
-          margin: state.isMobile() ? 15 : 30,
-          align: 'center',
-        },
-        credits: { enabled: false },
-        xAxis: await chartFactory.getXAxisConfig(),
-        yAxis: await chartFactory.getYAxisConfig(yRange),
-        series: seriesConfig,
-        legend: { enabled: false },
-        tooltip: await chartFactory.getTooltipConfig(),
-        plotOptions: {
-          series: {
-            animation: state.isMobile()
-              ? false
-              : {
-                  duration: 400,
-                  easing: 'easeOutQuart',
-                },
-            marker: {
-              enabled: false,
-              states: {
-                hover: {
-                  enabled: true,
-                  radius: state.isMobile() ? 4 : 6,
-                  lineWidth: 2,
-                  lineColor: '#ffffff',
-                },
-              },
-            },
+            : { duration: 400, easing: 'easeOutQuart' },
+          marker: {
+            enabled: false,
             states: {
               hover: {
-                lineWidthPlus: state.isMobile() ? 1 : 2,
-                halo: { size: 8, opacity: 0.3 },
-              },
-              inactive: { opacity: 0.6 },
-            },
-            turboThreshold: state.isMobile() ? 500 : 1000,
-            cropThreshold: state.isMobile() ? 250 : 500,
-          },
-          area: {
-            fillOpacity: state.isMobile() ? 0.4 : 0.6,
-            lineWidth: state.isMobile() ? 2.5 : 3.5,
-            threshold: null,
-          },
-        },
-        responsive: {
-          rules: [
-            {
-              condition: { maxWidth: 480 },
-              chartOptions: {
-                chart: {
-                  height: 280,
-                  spacingBottom: 15,
-                  spacingTop: 10,
-                  spacingLeft: 10,
-                  spacingRight: 10,
-                },
-                title: { style: { fontSize: '16px' }, margin: 15 },
+                enabled: true,
+                radius: State.isMobile() ? 4 : 6,
+                lineWidth: 2,
+                lineColor: '#ffffff',
               },
             },
-            {
-              condition: { maxWidth: 768 },
-              chartOptions: { chart: { height: 350 } },
+          },
+          states: {
+            hover: {
+              lineWidthPlus: State.isMobile() ? 1 : 2,
+              halo: { size: 8, opacity: 0.3 },
             },
-          ],
+            inactive: { opacity: 0.6 },
+          },
+          turboThreshold: State.isMobile() ? 500 : 1000,
+          cropThreshold: State.isMobile() ? 250 : 500,
         },
-      });
+        area: {
+          fillOpacity: State.isMobile() ? 0.4 : 0.6,
+          lineWidth: State.isMobile() ? 2.5 : 3.5,
+          threshold: null,
+        },
+      },
+      responsive: {
+        rules: [
+          {
+            condition: { maxWidth: 480 },
+            chartOptions: {
+              chart: {
+                height: 280,
+                spacingBottom: 15,
+                spacingTop: 10,
+                spacingLeft: 10,
+                spacingRight: 10,
+              },
+              title: { style: { fontSize: '16px' }, margin: 15 },
+            },
+          },
+          {
+            condition: { maxWidth: 768 },
+            chartOptions: { chart: { height: 350 } },
+          },
+        ],
+      },
+    });
 
-      return true;
-    } catch (error) {
-      chartContainer.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Chart creation failed: ${error.message}</div>`;
-      return false;
-    }
+    return true;
   },
 
-  async redrawWithDelay() {
-    const delay = state.isMobile() ? 300 : 100;
-    setTimeout(async () => {
-      try {
-        await this.create();
-      } catch (error) {}
-    }, delay);
+  redraw() {
+    const delay = State.isMobile() ? 300 : 100;
+    setTimeout(() => this.create(), delay);
   },
 };
 
-const statisticsUI = {
-  async update() {
-    if (!state.processedData.series) return;
+const Stats = {
+  update() {
+    if (!State.processedData.series) return;
 
-    const { views, likes, comments, uploads } = state.processedData.series;
-
+    const { views, likes, comments, uploads } = State.processedData.series;
     const stats = [
       { id: 'totalViews', value: views[views.length - 1] || 0 },
       { id: 'totalLikes', value: likes[likes.length - 1] || 0 },
@@ -862,20 +840,40 @@ const statisticsUI = {
         id: 'totalUploads',
         value: uploads[uploads.length - 1] || 0,
       });
+      Dom.show('uploadCountCard');
+    } else {
+      Dom.hide('uploadCountCard');
     }
 
     stats.forEach(stat => {
-      const element = document.getElementById(stat.id);
-      if (element) {
-        new Odometer({ el: element, value: stat.value }).update(stat.value);
+      const el = Dom.get(stat.id);
+      if (el) {
+        if (typeof Odometer !== 'undefined') {
+          try {
+            new Odometer({ el, value: stat.value }).update(stat.value);
+          } catch (e) {
+            el.textContent = stat.value.toLocaleString();
+          }
+        } else {
+          el.textContent = stat.value.toLocaleString();
+        }
       }
     });
+
+    const grid = document.querySelector('.stats-grid');
+    if (grid) {
+      if (uploads?.length > 0) {
+        grid.classList.remove('three-columns');
+      } else {
+        grid.classList.add('three-columns');
+      }
+    }
   },
 };
 
-const tableManager = {
-  async calculateChanges(current, previous, dailyData, index) {
-    const calculateChange = (curr, prev) => {
+const Tables = {
+  calcChanges(current, previous, dailyData, index) {
+    const calcChange = (curr, prev) => {
       if (!prev) return '';
       const change = curr - prev;
       const arrow = change < 0 ? '↓' : '';
@@ -884,9 +882,8 @@ const tableManager = {
       return `${changeString} ${arrow}`.trim();
     };
 
-    const determineClass = (currentChange, previousChange) => {
-      return currentChange >= previousChange ? 'positive' : 'negative';
-    };
+    const determineClass = (currentChange, previousChange) =>
+      currentChange >= previousChange ? 'positive' : 'negative';
 
     const result = {};
     ['views', 'likes', 'comments'].forEach(metric => {
@@ -897,9 +894,7 @@ const tableManager = {
           : 0;
 
       result[metric] = {
-        change: previous
-          ? calculateChange(current[metric], previous[metric])
-          : '',
+        change: previous ? calcChange(current[metric], previous[metric]) : '',
         class: previous ? determineClass(currentChange, previousChange) : '',
       };
     });
@@ -907,76 +902,63 @@ const tableManager = {
     return result;
   },
 
-  async addCurrentDayRow(tableBody, currentDayData, dailyData, useTimestamp) {
-    const currentRow = document.createElement('tr');
-
-    const currentDataTime = luxon.DateTime.fromISO(
-      useTimestamp ? currentDayData.timestamp : currentDayData.time
+  addCurrentRow(tableBody, currentData, dailyData, useTimestamp) {
+    const row = document.createElement('tr');
+    const currentTime = luxon.DateTime.fromISO(
+      useTimestamp ? currentData.timestamp : currentData.time
     ).setZone('America/New_York');
-
-    const roundedToHour = currentDataTime.set({
-      minute: 0,
-      second: 0,
-      millisecond: 0,
-    });
-
+    const rounded = currentTime.set({ minute: 0, second: 0, millisecond: 0 });
     const currentDate = luxon.DateTime.now().setZone('America/New_York');
-    const displayDateTime = currentDate.set({
-      hour: roundedToHour.hour,
+    const displayTime = currentDate.set({
+      hour: rounded.hour,
       minute: 0,
       second: 0,
       millisecond: 0,
     });
 
-    const { dateString } = formatters.formatDateTime(displayDateTime);
-    const timeString = displayDateTime.toFormat('HH:mm');
-    const previousDayData = dailyData[dailyData.length - 1];
-
-    const changes = await this.calculateChanges(
-      currentDayData,
-      previousDayData,
+    const { dateString } = Format.dateTime(displayTime);
+    const timeString = displayTime.toFormat('HH:mm');
+    const prevData = dailyData[dailyData.length - 1];
+    const changes = this.calcChanges(
+      currentData,
+      prevData,
       dailyData,
       dailyData.length
     );
 
-    currentRow.innerHTML = `
+    row.innerHTML = `
       <td>${dateString}, ${timeString}</td>
       <td>${Math.round(
-        currentDayData.views
+        currentData.views
       ).toLocaleString()} <span class="change ${changes.views.class}">(${
       changes.views.change
     })</span></td>
       <td>${Math.round(
-        currentDayData.likes
+        currentData.likes
       ).toLocaleString()} <span class="change ${changes.likes.class}">(${
       changes.likes.change
     })</span></td>
       <td>${Math.round(
-        currentDayData.comments
+        currentData.comments
       ).toLocaleString()} <span class="change ${changes.comments.class}">(${
       changes.comments.change
     })</span></td>
     `;
 
-    tableBody.insertBefore(currentRow, tableBody.firstChild);
+    tableBody.insertBefore(row, tableBody.firstChild);
   },
 
-  async addHistoricalRows(tableBody, dailyData, useTimestamp) {
-    for (let index = dailyData.length - 1; index >= 0; index--) {
-      const entry = dailyData[index];
-      const row = document.createElement('tr');
+  addHistoricalRows(tableBody, dailyData, useTimestamp) {
+    const fragment = document.createDocumentFragment();
 
+    for (let i = dailyData.length - 1; i >= 0; i--) {
+      const entry = dailyData[i];
+      const row = document.createElement('tr');
       const date = luxon.DateTime.fromISO(
         useTimestamp ? entry.timestamp : entry.time
       ).setZone('America/New_York');
-
-      const { dateString } = formatters.formatDateTime(date);
-      const changes = await this.calculateChanges(
-        entry,
-        dailyData[index - 1],
-        dailyData,
-        index
-      );
+      const { dateString } = Format.dateTime(date);
+      const changes = this.calcChanges(entry, dailyData[i - 1], dailyData, i);
 
       row.innerHTML = `
         <td>${dateString}</td>
@@ -993,17 +975,20 @@ const tableManager = {
       })</span></td>
       `;
 
-      tableBody.appendChild(row);
+      fragment.appendChild(row);
     }
+
+    tableBody.appendChild(fragment);
   },
 
-  async create(dailyData, currentDayData, useTimestamp = false) {
-    const tableBody = document.getElementById('dailyStatsBody');
-    tableBody.innerHTML = '';
+  create(dailyData, currentData, useTimestamp = false) {
+    const tableBody = Dom.get('dailyStatsBody');
+    if (!tableBody || !Array.isArray(dailyData)) return;
 
-    const currentDate = currentDayData
+    tableBody.innerHTML = '';
+    const currentDate = currentData
       ? luxon.DateTime.fromISO(
-          useTimestamp ? currentDayData.timestamp : currentDayData.time
+          useTimestamp ? currentData.timestamp : currentData.time
         )
           .setZone('America/New_York')
           .toFormat('yyyy-MM-dd')
@@ -1020,73 +1005,344 @@ const tableManager = {
             .toFormat('yyyy-MM-dd')
         : null;
 
-    if (currentDayData && currentDate !== lastDailyDate) {
-      await this.addCurrentDayRow(
-        tableBody,
-        currentDayData,
-        dailyData,
-        useTimestamp
-      );
+    if (currentData && currentDate !== lastDailyDate) {
+      this.addCurrentRow(tableBody, currentData, dailyData, useTimestamp);
     }
 
-    await this.addHistoricalRows(tableBody, dailyData, useTimestamp);
-    document.getElementById('dailyStatsTable').style.display = 'block';
+    this.addHistoricalRows(tableBody, dailyData, useTimestamp);
+    Dom.show('dailyStatsTable');
   },
 };
 
-const themeManager = {
-  async updateIcons(theme) {
-    const iconColor = theme === 'light' ? '000000' : 'ffffff';
-    document.getElementById(
-      'themeIcon'
-    ).src = `https://img.icons8.com/material-outlined/24/${iconColor}/contrast.png`;
-    document.getElementById(
-      'exportIcon'
-    ).src = `https://img.icons8.com/material-outlined/24/${iconColor}/download.png`;
+const Rankings = {
+  updateTimeouts: new Map(),
+
+  async fetch(channelId) {
+    const cacheKey = channelId;
+    const currentTime = Date.now();
+
+    if (
+      State.cachedRankings.has(cacheKey) &&
+      currentTime - State.lastFetchTime < 300000
+    ) {
+      return State.cachedRankings.get(cacheKey);
+    }
+
+    const url = `${Config.api.rankings}?channel=${channelId}`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok)
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+      const data = await response.json();
+      if (!data.videos || !Array.isArray(data.videos)) return [];
+
+      State.cachedRankings.set(cacheKey, data.videos);
+      State.lastFetchTime = currentTime;
+      return data.videos;
+    } catch (error) {
+      return State.cachedRankings.get(cacheKey) || [];
+    }
   },
 
-  async bindToggleEvent() {
-    document
-      .getElementById('themeToggle')
-      .addEventListener('click', async () => {
-        const currentTheme = document.body.getAttribute('data-theme');
-        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-        document.body.setAttribute('data-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
-        await this.updateIcons(newTheme);
-        await chartManager.redrawWithDelay();
+  calcAge(uploadTime) {
+    const uploadDT = luxon.DateTime.fromISO(uploadTime);
+    const currentDT = luxon.DateTime.now().setZone('America/New_York');
+    const diffHours = currentDT.diff(uploadDT, 'hours').hours;
+    return Math.floor(Math.max(0, diffHours));
+  },
+
+  getDefaults(videos) {
+    if (!videos || videos.length === 0) {
+      return { videoCount: 10, timePeriod: 24, highlightNewest: false };
+    }
+
+    const newest = videos[0];
+    const ageInHours = this.calcAge(newest.uploadTime);
+    const hasData =
+      newest.periodData && newest.periodData[ageInHours.toString()] > 0;
+
+    let smartTimePeriod,
+      highlightNewest = false;
+
+    if (ageInHours > 0 && ageInHours < 24 && hasData) {
+      smartTimePeriod = ageInHours;
+      highlightNewest = true;
+    } else {
+      smartTimePeriod = 24;
+    }
+
+    return {
+      videoCount: 10,
+      timePeriod: smartTimePeriod,
+      highlightNewest,
+      newestVideoId: newest.videoId,
+    };
+  },
+
+  processVideos(videos, timePeriod, videoCount) {
+    if (!videos || !Array.isArray(videos)) return [];
+
+    const withData = videos
+      .filter(
+        v =>
+          v.periodData &&
+          v.periodData[timePeriod.toString()] &&
+          v.periodData[timePeriod.toString()] > 0
+      )
+      .map(v => ({ ...v, viewsAtPeriod: v.periodData[timePeriod.toString()] }));
+
+    const recent = withData
+      .sort((a, b) => new Date(b.uploadTime) - new Date(a.uploadTime))
+      .slice(0, Math.min(videoCount, 25));
+
+    return recent.sort((a, b) => b.viewsAtPeriod - a.viewsAtPeriod);
+  },
+
+  display(videos) {
+    const list = Dom.get('rankingsList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (!videos || !Array.isArray(videos) || videos.length === 0) {
+      list.innerHTML =
+        '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No ranking data available for this time period.</div>';
+      return;
+    }
+
+    const ranked = this.processVideos(
+      videos,
+      State.rankingsSettings.timePeriod,
+      State.rankingsSettings.videoCount
+    );
+
+    if (ranked.length === 0) {
+      list.innerHTML =
+        '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No videos with data for this time period.</div>';
+      return;
+    }
+
+    const newest = ranked.reduce((newest, current) =>
+      new Date(current.uploadTime) > new Date(newest.uploadTime)
+        ? current
+        : newest
+    );
+
+    const fragment = document.createDocumentFragment();
+
+    ranked.forEach((video, index) => {
+      const item = Dom.create('div', 'ranking-item');
+      item.dataset.videoId = video.videoId;
+
+      const shouldHighlight = video.videoId === newest.videoId;
+      if (shouldHighlight) item.classList.add('ranking-highlight');
+
+      const formattedViews = Format.compact(video.viewsAtPeriod);
+      const periodUnit = Format.pluralize(
+        State.rankingsSettings.timePeriod,
+        'hour'
+      );
+
+      item.innerHTML = `
+        <div class="ranking-position">${index + 1}</div>
+        <img class="ranking-thumbnail" src="${video.thumbnail}" alt="${
+        video.title
+      }" 
+             onerror="this.style.display='none'" loading="lazy">
+        <div class="ranking-info">
+          <div class="ranking-title">${Format.addCommasToTitle(
+            video.title
+          )}</div>
+        </div>
+        <div class="ranking-views">
+          ${formattedViews}
+          <span class="ranking-time">in ${
+            State.rankingsSettings.timePeriod
+          } ${periodUnit}</span>
+        </div>
+      `;
+
+      item.addEventListener('click', () => {
+        Loader.loadVideo(video.videoId, State.currentChannel);
+        const searchInput = Dom.get('searchInput');
+        if (searchInput)
+          searchInput.value = Format.addCommasToTitle(video.title);
+      });
+
+      fragment.appendChild(item);
+    });
+
+    list.appendChild(fragment);
+
+    const subtitle = document.querySelector('.rankings-subtitle');
+    const periodUnit = Format.pluralize(
+      State.rankingsSettings.timePeriod,
+      'Hour'
+    );
+    if (subtitle) {
+      subtitle.textContent = `Views in First ${State.rankingsSettings.timePeriod} ${periodUnit}`;
+    }
+  },
+
+  updateInstant() {
+    if (!State.isRankingsView || !State.currentChannel) return;
+
+    const list = Dom.get('rankingsList');
+    if (list) {
+      list.innerHTML =
+        '<div style="text-align:center;padding:20px;color:var(--muted-text-color);">Updating rankings...</div>';
+    }
+
+    const cached = State.cachedRankings.get(State.currentChannel);
+    if (cached) this.display(cached);
+
+    this.fetch(State.currentChannel)
+      .then(videos => {
+        if (State.isRankingsView) this.display(videos);
+      })
+      .catch(error => {
+        if (list && !cached) {
+          list.innerHTML =
+            '<div style="text-align:center;padding:20px;color:red;">Error loading rankings. Please try again.</div>';
+        }
       });
   },
 
-  async initialize() {
-    const storedTheme = localStorage.getItem('theme') || 'dark';
-    document.body.setAttribute('data-theme', storedTheme);
-    await this.updateIcons(storedTheme);
-    await this.bindToggleEvent();
-  },
-};
+  bindSliders() {
+    const countSlider = Dom.get('videoCountSlider');
+    const countValue = Dom.get('videoCountValue');
+    const periodSlider = Dom.get('timePeriodSlider');
+    const periodValue = Dom.get('timePeriodValue');
 
-const searchManager = {
-  async handleInput(e) {
-    const searchTerm = e.target.value.toLowerCase();
-    document.querySelectorAll('.dropdown-list-item').forEach(item => {
-      const text = item.textContent.toLowerCase();
-      item.style.display = text.includes(searchTerm) ? '' : 'none';
-    });
-  },
+    if (countValue) countValue.textContent = State.rankingsSettings.videoCount;
+    if (periodValue)
+      periodValue.textContent = State.rankingsSettings.timePeriod;
 
-  async handleClickOutside(e) {
-    if (!e.target.closest('.search-bar')) {
-      document.getElementById('dropdownList').classList.remove('show');
+    if (countSlider) {
+      countSlider.value = State.rankingsSettings.videoCount;
+      countSlider.addEventListener(
+        'input',
+        e => {
+          State.rankingsSettings.videoCount = parseInt(e.target.value);
+          if (countValue)
+            countValue.textContent = State.rankingsSettings.videoCount;
+
+          clearTimeout(this.updateTimeouts.get('videoCount'));
+          this.updateTimeouts.set(
+            'videoCount',
+            setTimeout(() => this.updateInstant(), 200)
+          );
+        },
+        { passive: true }
+      );
+    }
+
+    if (periodSlider) {
+      periodSlider.value = State.rankingsSettings.timePeriod;
+      periodSlider.addEventListener(
+        'input',
+        e => {
+          State.rankingsSettings.timePeriod = parseInt(e.target.value);
+          if (periodValue)
+            periodValue.textContent = State.rankingsSettings.timePeriod;
+
+          clearTimeout(this.updateTimeouts.get('timePeriod'));
+          this.updateTimeouts.set(
+            'timePeriod',
+            setTimeout(() => this.updateInstant(), 200)
+          );
+        },
+        { passive: true }
+      );
     }
   },
 
-  async bindSeriesCardEvents() {
-    const createFadedColor = hexColor => {
-      const hex = hexColor.replace('#', '');
-      const r = parseInt(hex.substr(0, 2), 16);
-      const g = parseInt(hex.substr(2, 2), 16);
-      const b = parseInt(hex.substr(4, 2), 16);
+  init() {
+    this.bindSliders();
+  },
+};
+
+const Theme = {
+  updateIcons(theme) {
+    const iconColor = theme === 'light' ? '000000' : 'ffffff';
+    const themeIcon = Dom.get('themeIcon');
+    const exportIcon = Dom.get('exportIcon');
+
+    if (themeIcon)
+      themeIcon.src = `https://img.icons8.com/material-outlined/24/${iconColor}/contrast.png`;
+    if (exportIcon)
+      exportIcon.src = `https://img.icons8.com/material-outlined/24/${iconColor}/download.png`;
+  },
+
+  bindToggle() {
+    const toggle = Dom.get('themeToggle');
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        const current = document.body.getAttribute('data-theme');
+        const newTheme = current === 'light' ? 'dark' : 'light';
+
+        document.documentElement.setAttribute('data-theme', newTheme);
+        document.body.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        this.updateIcons(newTheme);
+
+        if (State.chart) {
+          setTimeout(() => {
+            const newCardBg = Dom.getCssVar('--card-background-color');
+            const newBorderColor = Dom.getCssVar('--border-color');
+
+            State.chart.update(
+              {
+                chart: {
+                  backgroundColor: newCardBg,
+                  plotBackgroundColor: newCardBg,
+                  plotBorderColor: newBorderColor,
+                },
+              },
+              true
+            );
+          }, 10);
+        }
+
+        Charts.redraw();
+      });
+    }
+  },
+
+  init() {
+    const stored = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', stored);
+    document.body.setAttribute('data-theme', stored);
+    this.updateIcons(stored);
+    this.bindToggle();
+  },
+};
+
+const Search = {
+  handleInput: Dom.debounce(function (e) {
+    const term = e.target.value.toLowerCase();
+    document.querySelectorAll('.dropdown-list-item').forEach(item => {
+      item.style.display = item.textContent.toLowerCase().includes(term)
+        ? ''
+        : 'none';
+    });
+  }, 150),
+
+  handleClickOut(e) {
+    if (!e.target.closest('.search-bar')) {
+      const dropdown = Dom.get('dropdownList');
+      if (dropdown) dropdown.classList.remove('show');
+    }
+  },
+
+  bindMetricCards() {
+    const createFaded = hex => {
+      const h = hex.replace('#', '');
+      const r = parseInt(h.substr(0, 2), 16);
+      const g = parseInt(h.substr(2, 2), 16);
+      const b = parseInt(h.substr(4, 2), 16);
 
       const fadedR = Math.round(r + (255 - r) * 0.2);
       const fadedG = Math.round(g + (255 - g) * 0.2);
@@ -1095,11 +1351,11 @@ const searchManager = {
       return `rgb(${fadedR}, ${fadedG}, ${fadedB})`;
     };
 
-    const seriesColors = {
-      0: createFadedColor(CONFIG.colors.views),
-      1: createFadedColor(CONFIG.colors.likes),
-      2: createFadedColor(CONFIG.colors.comments),
-      3: createFadedColor(CONFIG.colors.uploads),
+    const colors = {
+      0: createFaded(Config.colors.views),
+      1: createFaded(Config.colors.likes),
+      2: createFaded(Config.colors.comments),
+      3: createFaded(Config.colors.uploads),
     };
 
     document.querySelectorAll('.stat-card').forEach((card, index) => {
@@ -1110,282 +1366,456 @@ const searchManager = {
         });
 
         card.classList.add('active');
-        card.style.setProperty('--active-card-color', seriesColors[index]);
-
-        state.selectedSeriesIndex = index;
-        await chartManager.redrawWithDelay();
+        card.style.setProperty('--active-card-color', colors[index]);
+        State.selectedMetricIndex = index;
+        Charts.redraw();
       });
     });
 
-    const initialCard =
-      document.querySelectorAll('.stat-card')[state.selectedSeriesIndex];
-    if (initialCard) {
-      initialCard.classList.add('active');
-      initialCard.style.setProperty(
+    const initial =
+      document.querySelectorAll('.stat-card')[State.selectedMetricIndex];
+    if (initial) {
+      initial.classList.add('active');
+      initial.style.setProperty(
         '--active-card-color',
-        seriesColors[state.selectedSeriesIndex]
+        colors[State.selectedMetricIndex]
       );
     }
   },
 
-  async bindEvents() {
-    const searchInput = document.getElementById('searchInput');
-    const dropdownList = document.getElementById('dropdownList');
+  bindEvents() {
+    const searchInput = Dom.get('searchInput');
+    const dropdown = Dom.get('dropdownList');
 
-    searchInput.addEventListener('focus', () =>
-      dropdownList.classList.add('show')
-    );
+    if (searchInput && dropdown) {
+      searchInput.addEventListener('focus', () =>
+        dropdown.classList.add('show')
+      );
+      searchInput.addEventListener('input', this.handleInput);
+    }
 
-    searchInput.addEventListener('input', this.handleInput);
-    document.addEventListener('click', this.handleClickOutside);
-
-    await this.bindSeriesCardEvents();
+    document.addEventListener('click', this.handleClickOut);
+    this.bindMetricCards();
   },
 
   createChannelOption(channel) {
-    const option = document.createElement('div');
-    option.classList.add('dropdown-list-item', 'bold');
+    const option = Dom.create('div', 'dropdown-list-item bold');
     option.innerHTML = `
       <div style="display: flex; align-items: center;">
-        <img src="${channel.avatar}" alt="${channel.name}" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
+        <img src="${channel.avatar}" alt="${channel.name}" 
+             style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;" 
+             onerror="this.style.display='none'" loading="lazy">
         ${channel.name}
       </div>
     `;
     return option;
   },
 
-  async createChannelOptions() {
-    const dropdownList = document.getElementById('dropdownList');
+  createChannelOpts() {
+    const dropdown = Dom.get('dropdownList');
+    if (!dropdown) return;
 
-    CONFIG.channels.forEach(channel => {
+    const rankingsOpt = Dom.create('div', 'dropdown-list-item bold');
+    rankingsOpt.innerHTML = `
+      <div style="display: flex; align-items: center;">
+        <i class="fas fa-trophy" style="margin-right: 10px; color: var(--primary-color); font-size: 1.2rem;"></i>
+        Top Video Rankings
+      </div>
+    `;
+    dropdown.appendChild(rankingsOpt);
+
+    rankingsOpt.addEventListener('click', () => {
+      const input = Dom.get('searchInput');
+      if (input) input.value = 'Top Video Rankings';
+      dropdown.classList.remove('show');
+
+      const defaultCh = Config.channels[0];
+      Loader.loadChannel(defaultCh.id, defaultCh.avatar, defaultCh.id, true);
+    });
+
+    Config.channels.forEach(channel => {
       const option = this.createChannelOption(channel);
-      dropdownList.appendChild(option);
+      dropdown.appendChild(option);
 
-      option.addEventListener('click', async () => {
-        document.getElementById('searchInput').value = channel.name;
-        dropdownList.classList.remove('show');
-        await dataLoader.loadChannel(
-          channel.endpoint,
-          channel.avatar,
-          channel.id
-        );
+      option.addEventListener('click', () => {
+        const input = Dom.get('searchInput');
+        if (input) input.value = channel.name;
+        dropdown.classList.remove('show');
+        Loader.loadChannel(channel.id, channel.avatar, channel.id, false);
       });
     });
   },
 
-  async addVideoOptions(videos) {
-    const dropdownList = document.getElementById('dropdownList');
+  addVideoOpts(videos) {
+    const dropdown = Dom.get('dropdownList');
+    if (!dropdown || !Array.isArray(videos)) return;
 
-    for (const video of videos) {
-      const item = document.createElement('div');
-      item.classList.add('dropdown-list-item');
-      item.textContent = formatters.addCommasToTitle(video.title);
+    const fragment = document.createDocumentFragment();
+
+    videos.forEach(video => {
+      const item = Dom.create('div', 'dropdown-list-item');
+      item.textContent = Format.addCommasToTitle(video.title);
       item.dataset.videoId = video.videoId;
-      dropdownList.appendChild(item);
 
-      item.addEventListener('click', async e => {
-        const selectedVideoId = e.currentTarget.dataset.videoId;
-        document.getElementById('searchInput').value =
-          e.currentTarget.textContent;
-        dropdownList.classList.remove('show');
-        await dataLoader.loadVideo(selectedVideoId);
+      item.addEventListener('click', e => {
+        const selectedId = e.currentTarget.dataset.videoId;
+        const input = Dom.get('searchInput');
+        if (input) input.value = e.currentTarget.textContent;
+        dropdown.classList.remove('show');
+        Loader.loadVideo(selectedId, State.currentChannel);
       });
-    }
+
+      fragment.appendChild(item);
+    });
+
+    dropdown.appendChild(fragment);
   },
 
-  async handleURLParams(videos) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const videoIdFromUrl = urlParams.get('data');
+  handleUrlParams(videos) {
+    const params = new URLSearchParams(window.location.search);
+    const videoId = params.get('data');
 
-    const channelMap = CONFIG.channels.reduce((acc, channel) => {
-      acc[channel.id] = channel;
+    const channelMap = Config.channels.reduce((acc, ch) => {
+      acc[ch.id] = ch;
       return acc;
     }, {});
 
-    if (channelMap[videoIdFromUrl]) {
-      const channel = channelMap[videoIdFromUrl];
-      document.getElementById('searchInput').value = channel.name;
-      await dataLoader.loadChannel(
-        channel.endpoint,
-        channel.avatar,
-        channel.id
-      );
-    } else if (videoIdFromUrl) {
-      const matchingVideo = videos.find(
-        video => video.videoId === videoIdFromUrl
-      );
-      if (matchingVideo) {
-        document.getElementById('searchInput').value =
-          formatters.addCommasToTitle(matchingVideo.title);
-        await dataLoader.loadVideo(matchingVideo.videoId);
+    if (videoId === 'rankings') {
+      const defaultCh = Config.channels[0];
+      const input = Dom.get('searchInput');
+      if (input) input.value = 'Top Video Rankings';
+      Loader.loadChannel(defaultCh.id, defaultCh.avatar, defaultCh.id, true);
+    } else if (channelMap[videoId]) {
+      const channel = channelMap[videoId];
+      const input = Dom.get('searchInput');
+      if (input) input.value = channel.name;
+      Loader.loadChannel(channel.id, channel.avatar, channel.id, false);
+    } else if (videoId && Array.isArray(videos)) {
+      const matching = videos.find(v => v.videoId === videoId);
+      if (matching) {
+        const input = Dom.get('searchInput');
+        if (input) input.value = Format.addCommasToTitle(matching.title);
+        Loader.loadVideo(matching.videoId, 'mrbeast');
+      } else {
+        this.loadDefaultRankings();
       }
-    } else if (videos.length > 0) {
-      const mostRecentVideo = videos.sort(
-        (a, b) => new Date(b.uploadDate) - new Date(a.uploadDate)
-      )[0];
-      document.getElementById('searchInput').value = mostRecentVideo.title;
-      await dataLoader.loadVideo(mostRecentVideo.videoId);
+    } else if (Array.isArray(videos) && videos.length > 0) {
+      this.loadDefaultVideo(videos);
+    } else {
+      this.loadDefaultRankings();
     }
   },
 
-  async handleInitialLoad() {
-    try {
-      const response = await fetch(CONFIG.api.videos);
-      const data = await response.json();
-      await this.addVideoOptions(data.videos);
-      await this.handleURLParams(data.videos);
-    } catch (error) {}
+  loadDefaultVideo(videos) {
+    const recent = videos.sort(
+      (a, b) => new Date(b.uploadTime) - new Date(a.uploadTime)
+    )[0];
+    const input = Dom.get('searchInput');
+    if (input) input.value = Format.addCommasToTitle(recent.title);
+    Loader.loadVideo(recent.videoId, 'mrbeast');
   },
 
-  async initialize() {
-    await this.bindEvents();
-    await this.createChannelOptions();
-    await this.handleInitialLoad();
+  loadDefaultRankings() {
+    const defaultCh = Config.channels[0];
+    const input = Dom.get('searchInput');
+    if (input) input.value = 'Top Video Rankings';
+    Loader.loadChannel(defaultCh.id, defaultCh.avatar, defaultCh.id, true);
+  },
+
+  async fetchInitialVideos() {
+    try {
+      const response = await fetch(Config.api.videos.all);
+      if (!response.ok)
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+      const data = await response.json();
+      if (data?.videos) {
+        this.addVideoOpts(data.videos);
+        this.handleUrlParams(data.videos);
+      } else {
+        this.loadDefaultRankings();
+      }
+    } catch (error) {
+      this.loadDefaultRankings();
+    }
+  },
+
+  init() {
+    this.bindEvents();
+    this.createChannelOpts();
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => this.fetchInitialVideos());
+    } else {
+      setTimeout(() => this.fetchInitialVideos(), 100);
+    }
   },
 };
 
-const dataLoader = {
-  async setupChannelProfile(profileImageUrl) {
+const Loader = {
+  async setupProfile(profileUrl) {
     let headerLeft = document.querySelector('.header-left');
     if (!headerLeft) {
-      headerLeft = document.createElement('div');
-      headerLeft.className = 'header-left';
+      headerLeft = Dom.create('div', 'header-left');
       const header = document.querySelector('header');
-      const h1 = header.querySelector('h1');
-      header.insertBefore(headerLeft, h1);
-      headerLeft.appendChild(h1);
+      const h1 = header?.querySelector('h1');
+      if (header && h1) {
+        header.insertBefore(headerLeft, h1);
+        headerLeft.appendChild(h1);
+      }
     }
 
-    const profileImage = await dom.createProfileImage(profileImageUrl);
-    headerLeft.insertBefore(profileImage, headerLeft.firstChild);
+    if (headerLeft && profileUrl) {
+      Dom.removeImg();
+      const profileImg = Dom.createImg(profileUrl);
+      headerLeft.insertBefore(profileImg, headerLeft.firstChild);
+    }
   },
 
-  async updateVideoInfo(video) {
+  updateVideoInfo(video) {
     const elements = {
-      thumbnail: document.getElementById('videoThumbnail'),
-      videoLink: document.getElementById('videoLink'),
-      uploadDate: document.getElementById('uploadDate'),
-      duration: document.getElementById('videoDuration'),
+      thumbnail: Dom.get('videoThumbnail'),
+      videoLink: Dom.get('videoLink'),
+      uploadDate: Dom.get('uploadDate'),
+      duration: Dom.get('videoDuration'),
     };
 
-    elements.thumbnail.src = video.thumbnail;
-    elements.videoLink.href = `https://www.youtube.com/watch?v=${video.videoId}`;
-    elements.videoLink.textContent = formatters.addCommasToTitle(video.title);
+    if (elements.thumbnail && video.thumbnail) {
+      elements.thumbnail.src = video.thumbnail;
+      elements.thumbnail.loading = 'eager';
+    }
 
-    const uploadDate = luxon.DateTime.fromISO(video.uploadTime).setZone(
-      'America/New_York'
-    );
-    elements.uploadDate.textContent = `Uploaded: ${uploadDate.toFormat(
-      'M/d/yyyy'
-    )} at ${uploadDate.toFormat('h:mm:ss a')} EST`;
+    if (elements.videoLink && video.videoId && video.title) {
+      elements.videoLink.href = `https://www.youtube.com/watch?v=${video.videoId}`;
+      elements.videoLink.textContent = Format.addCommasToTitle(video.title);
+    }
 
-    const lastUpdatedDate = luxon.DateTime.fromISO(video.lastUpdated).setZone(
-      'America/New_York'
-    );
-    const lastUpdatedSpan = document.createElement('span');
-    lastUpdatedSpan.classList.add('last-updated');
-    lastUpdatedSpan.textContent = ` (Stats last updated: ${lastUpdatedDate.toFormat(
-      'M/d/yyyy'
-    )} at ${lastUpdatedDate.toFormat('h:mm:ss a')} EST)`;
-    elements.uploadDate.appendChild(lastUpdatedSpan);
+    if (elements.uploadDate && video.uploadTime) {
+      const uploadDate = luxon.DateTime.fromISO(video.uploadTime).setZone(
+        'America/New_York'
+      );
+      elements.uploadDate.innerHTML = `Uploaded: ${uploadDate.toFormat(
+        'M/d/yyyy'
+      )} at ${uploadDate.toFormat('h:mm:ss a')} EST`;
 
-    elements.duration.textContent = `Duration: ${video.stats[0].duration}`;
-    const videoIdSpan = document.createElement('span');
-    videoIdSpan.classList.add('video-id');
-    videoIdSpan.textContent = ` (Video ID: ${video.videoId})`;
-    elements.duration.appendChild(videoIdSpan);
+      if (video.lastUpdated) {
+        const lastUpdated = luxon.DateTime.fromISO(video.lastUpdated).setZone(
+          'America/New_York'
+        );
+        const span = Dom.create('span', 'last-updated');
+        span.textContent = ` (Stats last updated: ${lastUpdated.toFormat(
+          'M/d/yyyy'
+        )} at ${lastUpdated.toFormat('h:mm:ss a')} EST)`;
+        elements.uploadDate.appendChild(span);
+      }
+    }
 
-    document.getElementById('videoInfoCard').style.display = 'flex';
+    if (elements.duration && video.stats?.[0]?.duration) {
+      elements.duration.innerHTML = `Duration: ${video.stats[0].duration}`;
+      const videoIdSpan = Dom.create('span', 'video-id');
+      videoIdSpan.textContent = ` (Video ID: ${video.videoId})`;
+      elements.duration.appendChild(videoIdSpan);
+    }
+
+    Dom.show('videoInfoCard');
   },
 
-  async loadChannel(endpoint, profileImageUrl, urlPath) {
-    state.reset();
-    state.currentVideoId = urlPath;
+  async loadChannel(channelId, profileUrl, _, showRankings = false) {
+    State.reset();
+    State.currentEntityId = channelId;
+    State.currentChannel = channelId;
+    State.isRankingsView = showRankings;
 
-    document.getElementById('videoInfoCard').style.display = 'none';
-    document.querySelector('header h1').textContent = 'Channel Analytics';
+    const headerTitle = document.querySelector('header h1');
+    if (headerTitle) {
+      headerTitle.textContent = showRankings
+        ? 'Top Video Rankings'
+        : 'Channel Analytics';
+    }
 
-    await dom.removeExistingProfileImage();
-    await this.setupChannelProfile(profileImageUrl);
+    Dom.removeImg();
+    await this.setupProfile(profileUrl);
+    Dom.updateUrl(showRankings ? 'rankings' : channelId);
 
-    await dom.updateBrowserURL(urlPath);
-    document.getElementById('uploadCountCard').style.display = 'flex';
-    document.querySelector('.stats-grid').classList.remove('three-columns');
+    if (showRankings) {
+      Dom.setView('rankings');
 
-    try {
-      const response = await fetch(endpoint);
-      const combinedData = await response.json();
+      const list = Dom.get('rankingsList');
+      if (list) {
+        list.innerHTML =
+          '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading rankings...</div>';
+      }
 
-      state.rawData = combinedData;
-      state.processedData = await dataProcessor.transformRawData(combinedData);
+      try {
+        const rankings = await Rankings.fetch(channelId);
 
-      await chartManager.create();
-      await statisticsUI.update();
+        if (rankings.length > 0) {
+          const defaults = Rankings.getDefaults(rankings);
 
-      const dailyData = await dataProcessor.processDailyData(combinedData);
-      const currentDayData = combinedData[combinedData.length - 1];
-      await tableManager.create(dailyData, currentDayData);
-    } catch (error) {
-      document.getElementById('videoChart').innerHTML =
-        "<div style='text-align:center;padding:20px;color:red;'>Failed to load data. Please try again.</div>";
+          State.rankingsSettings.videoCount = defaults.videoCount;
+          State.rankingsSettings.timePeriod = defaults.timePeriod;
+
+          const countSlider = Dom.get('videoCountSlider');
+          const countValue = Dom.get('videoCountValue');
+          const periodSlider = Dom.get('timePeriodSlider');
+          const periodValue = Dom.get('timePeriodValue');
+
+          if (countSlider) countSlider.value = defaults.videoCount;
+          if (countValue) countValue.textContent = defaults.videoCount;
+          if (periodSlider) periodSlider.value = defaults.timePeriod;
+          if (periodValue) periodValue.textContent = defaults.timePeriod;
+
+          Rankings.display(rankings, defaults);
+        } else {
+          if (list) {
+            list.innerHTML =
+              '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No ranking data available for this channel.</div>';
+          }
+        }
+      } catch (error) {
+        if (list) {
+          list.innerHTML =
+            '<div style="text-align:center;padding:40px;color:red;">Error loading rankings. Please try again.</div>';
+        }
+      }
+    } else {
+      Dom.setView('video');
+
+      const uploadCard = Dom.get('uploadCountCard');
+      if (uploadCard) uploadCard.style.display = 'flex';
+
+      const grid = document.querySelector('.stats-grid');
+      if (grid) grid.classList.remove('three-columns');
+
+      const container = Dom.get('videoChart');
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:40px;">Loading channel data...</div>';
+      }
+
+      try {
+        const endpoint =
+          channelId === 'mrbeast'
+            ? Config.api.combinedHistory.mrbeast
+            : Config.api.combinedHistory.byChannel(channelId);
+
+        const response = await fetch(endpoint);
+        if (!response.ok)
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+        const combinedData = await response.json();
+
+        if (Array.isArray(combinedData)) {
+          State.rawData = combinedData;
+          State.processedData = DataProcessor.transform(combinedData);
+
+          await Charts.create();
+          Stats.update();
+
+          const dailyData = DataProcessor.processDaily(combinedData);
+          const currentData = combinedData[combinedData.length - 1];
+          Tables.create(dailyData, currentData);
+        } else {
+          throw new Error('Invalid data format received');
+        }
+      } catch (error) {
+        const chart = Dom.get('videoChart');
+        if (chart) {
+          chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load data: ${error.message}<br>Please try again.</div>`;
+        }
+      }
     }
   },
 
-  async loadVideo(videoId) {
-    state.reset();
-    state.currentVideoId = videoId;
-    await dom.updateBrowserURL(videoId);
+  async loadVideo(videoId, channelId = 'mrbeast') {
+    State.reset();
+    State.currentEntityId = videoId;
+    State.currentChannel = channelId;
+    State.isRankingsView = false;
+    Dom.updateUrl(videoId);
 
-    document.getElementById('uploadCountCard').style.display = 'none';
-    document.querySelector('.stats-grid').classList.add('three-columns');
-    document.querySelector('header h1').textContent = 'Video Analytics';
+    Dom.setView('video');
 
-    if (state.selectedSeriesIndex === 3) {
-      state.selectedSeriesIndex = 0;
+    const uploadCard = Dom.get('uploadCountCard');
+    if (uploadCard) uploadCard.style.display = 'none';
+
+    const grid = document.querySelector('.stats-grid');
+    if (grid) grid.classList.add('three-columns');
+
+    const headerTitle = document.querySelector('header h1');
+    if (headerTitle) headerTitle.textContent = 'Video Analytics';
+
+    if (State.selectedMetricIndex === 3) {
+      State.selectedMetricIndex = 0;
+      document.querySelectorAll('.stat-card').forEach((card, index) => {
+        card.classList.toggle('active', index === 0);
+      });
     }
 
-    await dom.removeExistingProfileImage();
+    Dom.removeImg();
+
+    const container = Dom.get('videoChart');
+    if (container) {
+      container.innerHTML =
+        '<div style="text-align:center;padding:40px;">Loading video data...</div>';
+    }
 
     try {
-      const response = await fetch(CONFIG.api.videoStats + videoId);
+      let endpoint = Config.api.videoStats.byChannel(channelId, videoId);
+      let response = await fetch(endpoint);
+
+      if (!response.ok) {
+        endpoint = Config.api.videoStats.base + videoId;
+        response = await fetch(endpoint);
+      }
+
+      if (!response.ok)
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
       const video = await response.json();
 
-      await this.updateVideoInfo(video);
+      if (video?.stats && Array.isArray(video.stats)) {
+        this.updateVideoInfo(video);
 
-      const filteredStats = video.stats.filter(
-        stat =>
-          stat.views != null &&
-          stat.views !== 0 &&
-          stat.likes != null &&
-          stat.likes !== 0 &&
-          stat.comments != null &&
-          stat.comments !== 0
-      );
+        const filtered = video.stats.filter(
+          stat =>
+            stat.views != null &&
+            stat.views !== 0 &&
+            stat.likes != null &&
+            stat.likes !== 0 &&
+            stat.comments != null &&
+            stat.comments !== 0
+        );
 
-      state.rawData = filteredStats;
+        State.rawData = filtered;
 
-      const processedData = await dataProcessor.transformRawData(filteredStats);
-      delete processedData.series.uploads;
-      state.processedData = processedData;
+        const processed = DataProcessor.transform(filtered);
+        delete processed.series.uploads;
+        State.processedData = processed;
 
-      await chartManager.create();
-      await statisticsUI.update();
+        await Charts.create();
+        Stats.update();
 
-      const dailyData = await dataProcessor.processDailyData(
-        filteredStats,
-        true
-      );
-      const currentDayData = filteredStats[filteredStats.length - 1];
-      await tableManager.create(dailyData, currentDayData, true);
+        const dailyData = DataProcessor.processDaily(filtered, true);
+        const currentData = filtered[filtered.length - 1];
+        Tables.create(dailyData, currentData, true);
+
+        Dom.show('videoInfoCard');
+      } else {
+        throw new Error('Invalid video data format');
+      }
     } catch (error) {
-      document.getElementById('videoChart').innerHTML =
-        "<div style='text-align:center;padding:20px;color:red;'>Failed to load video data. Please try again.</div>";
+      const chart = Dom.get('videoChart');
+      if (chart) {
+        chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load video data: ${error.message}<br>Please try again.</div>`;
+      }
     }
   },
 };
 
-const exportManager = {
-  async generateCSVContent(timestamps) {
+const Export = {
+  generateCsv(timestamps) {
+    if (!Array.isArray(timestamps)) return '';
+
     const estTimestamps = timestamps.map(entry => ({
       ...entry,
       date: luxon.DateTime.fromJSDate(entry.date).setZone('America/New_York'),
@@ -1435,7 +1865,7 @@ const exportManager = {
     return csvContent;
   },
 
-  async downloadFile(csvContent, filename) {
+  download(csvContent, filename) {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -1445,61 +1875,60 @@ const exportManager = {
     document.body.removeChild(link);
   },
 
-  async handleTableScroll(e) {
-    const tableContainer = document.querySelector('.table-responsive');
-    if (tableContainer.scrollHeight > tableContainer.clientHeight) {
-      e.preventDefault();
-      tableContainer.scrollTop += e.deltaY;
-    }
-  },
+  toCsv() {
+    if (!State.processedData.timestamps || !State.processedData.series) return;
 
-  async exportToCSV() {
-    if (!state.processedData.timestamps || !state.processedData.series) {
-      return;
-    }
-
-    const timestamps = state.processedData.timestamps
+    const timestamps = State.processedData.timestamps
       .map((timestamp, i) => ({
         date: luxon.DateTime.fromMillis(timestamp)
           .setZone('America/New_York')
           .toJSDate(),
-        views: Math.round(state.processedData.series.views[i] || 0),
-        likes: Math.round(state.processedData.series.likes[i] || 0),
-        comments: Math.round(state.processedData.series.comments[i] || 0),
+        views: Math.round(State.processedData.series.views[i] || 0),
+        likes: Math.round(State.processedData.series.likes[i] || 0),
+        comments: Math.round(State.processedData.series.comments[i] || 0),
       }))
       .sort((a, b) => a.date - b.date);
 
-    const csvContent = await this.generateCSVContent(timestamps);
-    await this.downloadFile(csvContent, `${state.currentVideoId}.csv`);
+    const csvContent = this.generateCsv(timestamps);
+    if (csvContent) {
+      this.download(csvContent, `${State.currentEntityId}_data.csv`);
+    }
   },
 
-  async initialize() {
-    document
-      .getElementById('exportButton')
-      .addEventListener('click', () => this.exportToCSV());
-    document
-      .querySelector('.table-responsive')
-      .addEventListener('wheel', e => this.handleTableScroll(e));
+  init() {
+    const exportBtn = Dom.get('exportButton');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => this.toCsv());
+    }
+
+    const tableResponsive = document.querySelector('.table-responsive');
+    if (tableResponsive) {
+      tableResponsive.addEventListener('wheel', e => {
+        if (tableResponsive.scrollHeight > tableResponsive.clientHeight) {
+          e.preventDefault();
+          tableResponsive.scrollTop += e.deltaY;
+        }
+      });
+    }
   },
 };
 
-const layoutManager = {
-  async setupResponsive() {
+const Layout = {
+  setupResponsive() {
     const headerControls = document.querySelector('.header-controls');
     const searchBar = document.querySelector('.search-bar');
-    const themeToggle = document.getElementById('themeToggle');
-    const exportButton = document.getElementById('exportButton');
+    const themeToggle = Dom.get('themeToggle');
+    const exportButton = Dom.get('exportButton');
 
-    const existingMobileButtons = document.querySelector('.mobile-buttons');
-    if (existingMobileButtons) {
-      existingMobileButtons.remove();
-    }
+    if (!headerControls || !searchBar || !themeToggle || !exportButton) return;
 
-    if (window.innerWidth <= 768) {
+    const existing = document.querySelector('.mobile-buttons');
+    if (existing) existing.remove();
+
+    if (window.innerWidth <= Config.responsive.breakpoints.tablet) {
       let mobileButtons = document.querySelector('.mobile-buttons');
       if (!mobileButtons) {
-        mobileButtons = document.createElement('div');
-        mobileButtons.className = 'mobile-buttons';
+        mobileButtons = Dom.create('div', 'mobile-buttons');
         headerControls.appendChild(mobileButtons);
       }
 
@@ -1513,28 +1942,100 @@ const layoutManager = {
     }
   },
 
-  async bindEvents() {
+  bindEvents() {
     window.addEventListener(
       'resize',
-      dom.debounce(async () => {
-        if (state.chart && state.isChartReady) {
-          await chartManager.redrawWithDelay();
-        }
+      Dom.debounce(() => {
+        this.setupResponsive();
+        if (State.chart && State.isChartReady) Charts.redraw();
       }, 250)
     );
 
-    window.addEventListener('load', this.setupResponsive);
-    window.addEventListener('resize', this.setupResponsive);
+    window.addEventListener('load', () => this.setupResponsive());
   },
 };
 
-const app = {
-  async initialize() {
-    await themeManager.initialize();
-    await searchManager.initialize();
-    await exportManager.initialize();
-    await layoutManager.bindEvents();
+const App = {
+  init() {
+    try {
+      this.checkDeps();
+      Theme.init();
+      Search.init();
+      Export.init();
+      Layout.bindEvents();
+      Rankings.init();
+    } catch (error) {
+      this.showFallback(error);
+    }
+  },
+
+  checkDeps() {
+    const deps = {
+      Luxon: typeof luxon !== 'undefined',
+      Highcharts: typeof Highcharts !== 'undefined',
+      Odometer: typeof Odometer !== 'undefined',
+    };
+
+    if (!deps.Luxon)
+      throw new Error('Luxon library is required but not loaded');
+  },
+
+  showFallback(error) {
+    const body = document.body;
+    if (body) {
+      body.innerHTML = `
+        <div style="
+          max-width: 800px;
+          margin: 50px auto;
+          padding: 40px;
+          text-align: center;
+          font-family: 'Poppins', Arial, sans-serif;
+          background: #f8f9fa;
+          border-radius: 12px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        ">
+          <h1 style="color: #db421f; margin-bottom: 20px;">Application Error</h1>
+          <p style="color: #666; font-size: 18px; margin-bottom: 30px;">
+            The application failed to initialize properly.
+          </p>
+          <div style="
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            text-align: left;
+            border-left: 4px solid #db421f;
+          ">
+            <strong>Error:</strong> ${error.message}
+          </div>
+          <button onclick="window.location.reload()" style="
+            background: #db421f;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: inherit;
+          ">
+            Reload Page
+          </button>
+        </div>
+      `;
+    }
   },
 };
 
-document.addEventListener('DOMContentLoaded', app.initialize);
+function initApp() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => App.init());
+  } else {
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => App.init());
+    } else {
+      setTimeout(() => App.init(), 100);
+    }
+  }
+}
+
+initApp();

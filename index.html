@@ -80,7 +80,9 @@
   </head>
   <body>
     <header>
-      <h1>Video Analytics</h1>
+      <div class="header-left">
+        <h1>Video Analytics</h1>
+      </div>
       <div class="header-controls">
         <div class="search-bar">
           <input
@@ -95,14 +97,24 @@
           </div>
           <div class="dropdown-list" id="dropdownList" role="listbox"></div>
         </div>
-        <button class="theme-toggle" id="themeToggle" role="button">
+        <button
+          class="theme-toggle"
+          id="themeToggle"
+          role="button"
+          aria-label="Toggle dark mode"
+        >
           <img
             src="https://img.icons8.com/material-outlined/24/ffffff/contrast.png"
             alt="Toggle Dark Mode Icon"
             id="themeIcon"
           />
         </button>
-        <button class="export-button" id="exportButton" role="button">
+        <button
+          class="export-button"
+          id="exportButton"
+          role="button"
+          aria-label="Export data"
+        >
           <img
             src="https://img.icons8.com/material-outlined/24/ffffff/download.png"
             alt="Export Data Icon"
@@ -112,59 +124,102 @@
       </div>
     </header>
 
-    <div id="videoInfoCard" class="video-info-card" style="display: none">
-      <img
-        id="videoThumbnail"
-        class="video-thumbnail"
-        src=""
-        alt="Video Thumbnail"
-      />
-      <div class="video-details">
-        <h2 id="videoTitle" class="video-title">
-          <a id="videoLink" href="#" target="_blank">Video Title</a>
-        </h2>
-        <p id="uploadDate" class="video-upload-date">Uploaded: YYYY-MM-DD</p>
-        <p id="videoDuration" class="video-duration">Duration: 00:00</p>
+    <div id="rankingsView" class="rankings-view" style="display: none">
+      <div class="rankings-controls">
+        <div class="rankings-toolbar">
+          <div class="slider-controls">
+            <div class="slider-container">
+              <label
+                >Number of videos: <span id="videoCountValue">10</span></label
+              >
+              <input
+                type="range"
+                id="videoCountSlider"
+                min="3"
+                max="25"
+                value="10"
+                class="slider"
+              />
+            </div>
+            <div class="slider-container">
+              <label>Hours of data: <span id="timePeriodValue">24</span></label>
+              <input
+                type="range"
+                id="timePeriodSlider"
+                min="1"
+                max="168"
+                value="24"
+                class="slider"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rankings-panel">
+        <div class="rankings-header">
+          <h2>Top Performing Videos</h2>
+          <p class="rankings-subtitle">Views in First 24 Hours</p>
+        </div>
+        <div class="rankings-list" id="rankingsList"></div>
       </div>
     </div>
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <h3><i class="fas fa-eye"></i> Views</h3>
-        <div id="totalViews" class="odometer">0</div>
+    <div id="videoStatsView" class="video-stats-view">
+      <div id="videoInfoCard" class="video-info-card" style="display: none">
+        <img
+          id="videoThumbnail"
+          class="video-thumbnail"
+          src=""
+          alt="Video Thumbnail"
+        />
+        <div class="video-details">
+          <h2 id="videoTitle" class="video-title">
+            <a id="videoLink" href="#" target="_blank">Video Title</a>
+          </h2>
+          <p id="uploadDate" class="video-upload-date">Uploaded: YYYY-MM-DD</p>
+          <p id="videoDuration" class="video-duration">Duration: 00:00</p>
+        </div>
       </div>
-      <div class="stat-card">
-        <h3><i class="fas fa-thumbs-up"></i> Likes</h3>
-        <div id="totalLikes" class="odometer">0</div>
-      </div>
-      <div class="stat-card">
-        <h3><i class="fas fa-comments"></i> Comments</h3>
-        <div id="totalComments" class="odometer">0</div>
-      </div>
-      <div class="stat-card" id="uploadCountCard" style="display: none">
-        <h3><i class="fas fa-upload"></i> Uploads</h3>
-        <div id="totalUploads" class="odometer">0</div>
-      </div>
-    </div>
 
-    <div class="chart-container">
-      <div id="videoChart" style="width: 100%; height: 100%"></div>
-    </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <h3><i class="fas fa-eye"></i> Views</h3>
+          <div id="totalViews" class="odometer">0</div>
+        </div>
+        <div class="stat-card">
+          <h3><i class="fas fa-thumbs-up"></i> Likes</h3>
+          <div id="totalLikes" class="odometer">0</div>
+        </div>
+        <div class="stat-card">
+          <h3><i class="fas fa-comments"></i> Comments</h3>
+          <div id="totalComments" class="odometer">0</div>
+        </div>
+        <div class="stat-card" id="uploadCountCard" style="display: none">
+          <h3><i class="fas fa-upload"></i> Uploads</h3>
+          <div id="totalUploads" class="odometer">0</div>
+        </div>
+      </div>
 
-    <div id="dailyStatsTable" class="daily-stats-table" style="display: none">
-      <h3>Daily Statistics</h3>
-      <div class="table-responsive">
-        <table>
-          <thead>
-            <tr>
-              <th>Date (EST)</th>
-              <th>Views</th>
-              <th>Likes</th>
-              <th>Comments</th>
-            </tr>
-          </thead>
-          <tbody id="dailyStatsBody"></tbody>
-        </table>
+      <div class="chart-container">
+        <div id="videoChart" style="width: 100%; height: 100%"></div>
+      </div>
+
+      <div id="dailyStatsTable" class="daily-stats-table" style="display: none">
+        <h3>Daily Statistics</h3>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Date (EST)</th>
+                <th>Views</th>
+                <th>Likes</th>
+                <th>Comments</th>
+              </tr>
+            </thead>
+            <tbody id="dailyStatsBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 

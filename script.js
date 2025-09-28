@@ -1139,7 +1139,7 @@ const Rankings = {
       const shouldHighlight = video.videoId === newest.videoId;
       if (shouldHighlight) item.classList.add('ranking-highlight');
 
-      const formattedViews = Format.compact(video.viewsAtPeriod);
+      const formattedViews = Format.addCommas(video.viewsAtPeriod);
       const periodUnit = Format.pluralize(
         State.rankingsSettings.timePeriod,
         'hour'

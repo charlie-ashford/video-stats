@@ -1176,6 +1176,11 @@ const Rankings = {
 
     list.appendChild(fragment);
 
+    const heading = document.querySelector('.rankings-header h2');
+    if (heading) {
+      heading.textContent = `Top ${State.rankingsSettings.videoCount} Performing Videos`;
+    }
+
     const subtitle = document.querySelector('.rankings-subtitle');
     const periodUnit = Format.pluralize(
       State.rankingsSettings.timePeriod,

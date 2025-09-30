@@ -1420,7 +1420,7 @@ const Gains = {
           </div>
           <div class="gains-change ${changeClass}">
             <span class="gains-arrow">${arrow}</span>
-            ${sign}${formattedChange} change from prev. ${periodLabelGain}
+            ${sign}${formattedChange} from prev. ${periodLabelGain}
             ${
               formattedPercentage
                 ? `<span class="gains-percentage">(${formattedPercentage})</span>`

@@ -1992,6 +1992,8 @@ const Loader = {
     if (showRankings) {
       Dom.updateUrl('rankings');
       Dom.setView('rankings');
+      const exportBtn = Dom.get('exportButton');
+      if (exportBtn) exportBtn.style.display = 'none';
 
       const list = Dom.get('rankingsList');
       if (list) {
@@ -2034,6 +2036,8 @@ const Loader = {
     } else if (showGains) {
       Dom.updateUrl('gains');
       Dom.setView('gains');
+      const exportBtn = Dom.get('exportButton');
+      if (exportBtn) exportBtn.style.display = 'none';
 
       const list = Dom.get('gainsList');
       if (list) {
@@ -2094,6 +2098,8 @@ const Loader = {
       Dom.updateUrl(channelId);
       Dom.setView('video');
       Dom.hide('videoInfoCard');
+      const exportBtn = Dom.get('exportButton');
+      if (exportBtn) exportBtn.style.display = 'flex';
 
       const container = Dom.get('videoChart');
       if (container) {
@@ -2150,6 +2156,8 @@ const Loader = {
     Dom.updateUrl(videoId);
 
     Dom.setView('video');
+    const exportBtn = Dom.get('exportButton');
+    if (exportBtn) exportBtn.style.display = 'flex';
 
     const container = Dom.get('videoChart');
     if (container) {

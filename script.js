@@ -198,10 +198,14 @@ const Dom = {
     if (existing) existing.remove();
   },
 
-  updateUrl(path) {
-    const newUrl = `${window.location.origin}${window.location.pathname}?data=${path}`;
-    window.history.replaceState({ path }, '', newUrl);
-  },
+
+	updateUrl(path, channel = null) {
+	  let newUrl = `${window.location.origin}${window.location.pathname}?data=${path}`;
+	  if (channel) {
+	    newUrl += `&channel=${channel}`;
+	  }
+	  window.history.replaceState({ path, channel }, '', newUrl);
+	},
 
   debounce(callback, delay) {
     let timeoutId;
@@ -1794,6 +1798,7 @@ const Search = {
   handleUrlParams(videos) {
     const params = new URLSearchParams(window.location.search);
     const videoId = params.get('data');
+    const channelParam = params.get('channel');
 
     const channelMap = Config.channels.reduce((acc, ch) => {
       acc[ch.id] = ch;
@@ -1801,27 +1806,21 @@ const Search = {
     }, {});
 
     if (videoId === 'rankings') {
-      const defaultCh = Config.channels[0];
+      const channel =
+        channelParam && channelMap[channelParam]
+          ? channelMap[channelParam]
+          : Config.channels[0];
       const input = Dom.get('searchInput');
       if (input) input.value = 'Top Video Rankings';
-      Loader.loadChannel(
-        defaultCh.id,
-        defaultCh.avatar,
-        defaultCh.id,
-        true,
-        false
-      );
+      Loader.loadChannel(channel.id, channel.avatar, channel.id, true, false);
     } else if (videoId === 'gains') {
-      const defaultCh = Config.channels[0];
+      const channel =
+        channelParam && channelMap[channelParam]
+          ? channelMap[channelParam]
+          : Config.channels[0];
       const input = Dom.get('searchInput');
       if (input) input.value = 'Top Video Gains';
-      Loader.loadChannel(
-        defaultCh.id,
-        defaultCh.avatar,
-        defaultCh.id,
-        false,
-        true
-      );
+      Loader.loadChannel(channel.id, channel.avatar, channel.id, false, true);
     } else if (channelMap[videoId]) {
       const channel = channelMap[videoId];
       const input = Dom.get('searchInput');
@@ -1990,7 +1989,7 @@ const Loader = {
     await this.setupProfile(profileUrl);
 
     if (showRankings) {
-      Dom.updateUrl('rankings');
+      Dom.updateUrl('rankings', channelId);
       Dom.setView('rankings');
       const exportBtn = Dom.get('exportButton');
       if (exportBtn) exportBtn.style.display = 'none';
@@ -2034,7 +2033,7 @@ const Loader = {
         }
       }
     } else if (showGains) {
-      Dom.updateUrl('gains');
+      Dom.updateUrl('gains', channelId);
       Dom.setView('gains');
       const exportBtn = Dom.get('exportButton');
       if (exportBtn) exportBtn.style.display = 'none';

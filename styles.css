@@ -1150,6 +1150,68 @@ footer .fa-heart {
     width: 100%;
     text-align: center;
   }
+
+  .ranking-item,
+  .gains-item {
+    padding: 0.7rem;
+    flex-wrap: wrap;
+  }
+
+  .ranking-position,
+  .gains-position {
+    min-width: 32px;
+    height: 32px;
+    font-size: 0.95rem;
+    margin-right: 0.6rem;
+  }
+
+  .ranking-thumbnail,
+  .gains-thumbnail {
+    width: 90px;
+    height: 51px;
+    margin-right: 0.6rem;
+  }
+
+  .ranking-info,
+  .gains-info {
+    flex: 1;
+    min-width: 0;
+    margin-right: 0.6rem;
+  }
+
+  .ranking-title,
+  .gains-title {
+    font-size: 0.875rem;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    word-break: break-word;
+  }
+
+  .ranking-views,
+  .gains-stats {
+    font-size: 0.95rem;
+    width: 100%;
+    margin-left: 42px;
+    margin-top: 0.5rem;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .gains-current {
+    font-size: 1.05rem;
+  }
+
+  .gains-period-label {
+    font-size: 0.7rem;
+  }
+
+  .gains-change {
+    font-size: 0.8rem;
+  }
+
+  .ranking-time {
+    font-size: 0.8rem;
+  }
 }
 
 @media (max-width: 768px) {

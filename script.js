@@ -1397,6 +1397,13 @@ const Gains = {
           ? 'in last 3d'
           : 'in last 7d';
 
+        const periodLabelGain = 
+          State.gainsSettings.period === 1
+            ? '24h'
+            : State.gainsSettings.period === 3
+            ? '3d'
+            : '7d';
+
       item.innerHTML = `
         <div class="gains-position">${index + 1}</div>
         <img class="gains-thumbnail" src="${video.thumbnail}" alt="${
@@ -1413,7 +1420,7 @@ const Gains = {
           </div>
           <div class="gains-change ${changeClass}">
             <span class="gains-arrow">${arrow}</span>
-            ${sign}${formattedChange} change
+            ${sign}${formattedChange} change from prev. ${periodLabelGain}
             ${
               formattedPercentage
                 ? `<span class="gains-percentage">(${formattedPercentage})</span>`

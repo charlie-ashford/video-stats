@@ -165,6 +165,106 @@
       </div>
     </div>
 
+    <div id="gainsView" class="gains-view" style="display: none">
+      <div class="gains-controls">
+        <div class="gains-toolbar">
+          <div class="gains-controls-row">
+            <div class="gains-slider-container">
+              <label
+                >Number of videos: <span id="gainsCountValue">30</span></label
+              >
+              <input
+                type="range"
+                id="gainsCountSlider"
+                min="3"
+                max="50"
+                value="10"
+                class="slider"
+              />
+            </div>
+          </div>
+
+          <div class="gains-button-groups">
+            <div class="button-group">
+              <span class="button-group-label">Time Period:</span>
+              <button
+                class="control-button active"
+                data-period="1"
+                data-group="period"
+              >
+                1 Day
+              </button>
+              <button
+                class="control-button"
+                data-period="3"
+                data-group="period"
+              >
+                3 Days
+              </button>
+              <button
+                class="control-button"
+                data-period="7"
+                data-group="period"
+              >
+                7 Days
+              </button>
+            </div>
+
+            <div class="button-group">
+              <span class="button-group-label">Video Type:</span>
+              <button
+                class="control-button"
+                data-filter="all"
+                data-group="filter"
+              >
+                All
+              </button>
+              <button
+                class="control-button"
+                data-filter="long"
+                data-group="filter"
+              >
+                Long
+              </button>
+              <button
+                class="control-button active"
+                data-filter="short"
+                data-group="filter"
+              >
+                Shorts
+              </button>
+            </div>
+
+            <div class="button-group">
+              <span class="button-group-label">Metric:</span>
+              <button
+                class="control-button"
+                data-metric="views"
+                data-group="metric"
+              >
+                Views
+              </button>
+              <button
+                class="control-button active"
+                data-metric="likes"
+                data-group="metric"
+              >
+                Likes
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gains-panel">
+        <div class="gains-header">
+          <h2>Top Video Gains</h2>
+          <p class="gains-subtitle">Growth in the Last 24 Hours</p>
+        </div>
+        <div class="gains-list" id="gainsList"></div>
+      </div>
+    </div>
+
     <div id="videoStatsView" class="video-stats-view">
       <div id="videoInfoCard" class="video-info-card" style="display: none">
         <img

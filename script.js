@@ -12,6 +12,7 @@ const Config = {
         `https://api.communitrics.com/videoStats/${channel}/${videoId}`,
     },
     rankings: 'https://api.communitrics.com/videos/top10',
+    gains: 'https://api.communitrics.com/videos/gains',
     combinedHistory: {
       mrbeast: 'https://api.communitrics.com/combined-history',
       byChannel: channel =>
@@ -82,6 +83,14 @@ const Config = {
     maxDataPoints: { mobile: 500, tablet: 1000, desktop: 2000, large: 3000 },
   },
   rankings: { defaultCount: 10, maxCount: 25, defaultHours: 24, maxHours: 168 },
+  gains: {
+    defaultPeriod: 1,
+    defaultFilter: 'short',
+    defaultMetric: 'likes',
+    defaultCount: 10,
+    minCount: 3,
+    maxCount: 50,
+  },
 };
 
 const State = {
@@ -94,11 +103,19 @@ const State = {
   isChartReady: false,
   pendingYAxisRange: null,
   isRankingsView: false,
+  isGainsView: false,
   rankingsSettings: {
     videoCount: Config.rankings.defaultCount,
     timePeriod: Config.rankings.defaultHours,
   },
+  gainsSettings: {
+    period: Config.gains.defaultPeriod,
+    filter: Config.gains.defaultFilter,
+    metric: Config.gains.defaultMetric,
+    count: Config.gains.defaultCount,
+  },
   cachedRankings: new Map(),
+  cachedGains: new Map(),
   lastFetchTime: 0,
 
   getBreakpoint() {
@@ -212,9 +229,15 @@ const Dom = {
   setView(type) {
     if (type === 'rankings') {
       this.show('rankingsView');
+      this.hide('gainsView');
+      this.hide('videoStatsView');
+    } else if (type === 'gains') {
+      this.hide('rankingsView');
+      this.show('gainsView');
       this.hide('videoStatsView');
     } else {
       this.hide('rankingsView');
+      this.hide('gainsView');
       this.show('videoStatsView');
     }
   },
@@ -268,6 +291,11 @@ const Format = {
 
   pluralize(count, singular, plural) {
     return count === 1 ? singular : plural || `${singular}s`;
+  },
+
+  percentage(current, previous) {
+    if (!previous || previous === 0) return null;
+    return ((current - previous) / previous) * 100;
   },
 };
 
@@ -1269,6 +1297,256 @@ const Rankings = {
   },
 };
 
+const Gains = {
+  allVideosCache: new Map(),
+
+  async fetch(channelId, metric, filter, period) {
+    const cacheKey = `${channelId}-${metric}-${filter}-${period}`;
+    const currentTime = Date.now();
+
+    if (
+      this.allVideosCache.has(cacheKey) &&
+      currentTime - State.lastFetchTime < 300000
+    ) {
+      return this.allVideosCache.get(cacheKey);
+    }
+
+    const url = `${Config.api.gains}?channel=${channelId}&metric=${metric}&filter=${filter}&limit=50`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok)
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+      const data = await response.json();
+      if (!data.videos || !Array.isArray(data.videos)) return [];
+
+      this.allVideosCache.set(cacheKey, data.videos);
+      State.lastFetchTime = currentTime;
+      return data.videos;
+    } catch (error) {
+      return this.allVideosCache.get(cacheKey) || [];
+    }
+  },
+
+  getPeriodKey(period) {
+    if (period === 1) return 'past24h';
+    if (period === 3) return 'past3d';
+    if (period === 7) return 'past7d';
+    return 'past24h';
+  },
+
+  getPreviousPeriodKey(period) {
+    if (period === 1) return 'previous24h';
+    if (period === 3) return 'previous3d';
+    if (period === 7) return 'previous7d';
+    return 'previous24h';
+  },
+
+  display(videos, count) {
+    const list = Dom.get('gainsList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (!videos || !Array.isArray(videos) || videos.length === 0) {
+      list.innerHTML =
+        '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No gains data available for this selection.</div>';
+      return;
+    }
+
+    const periodKey = this.getPeriodKey(State.gainsSettings.period);
+    const previousKey = this.getPreviousPeriodKey(State.gainsSettings.period);
+
+    const withGains = videos
+      .filter(v => v.gains && v.gains[periodKey] != null)
+      .sort((a, b) => b.gains[periodKey] - a.gains[periodKey])
+      .slice(0, count);
+
+    if (withGains.length === 0) {
+      list.innerHTML =
+        '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No videos with gains data for this time period.</div>';
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    withGains.forEach((video, index) => {
+      const item = Dom.create('div', 'gains-item');
+      item.dataset.videoId = video.videoId;
+
+      const currentGain = video.gains[periodKey];
+      const previousGain = video.gains[previousKey] || 0;
+      const change = currentGain - previousGain;
+      const percentage = Format.percentage(currentGain, previousGain);
+
+      const isPositive = change >= 0;
+      const arrow = isPositive ? '↑' : '↓';
+      const changeClass = isPositive ? 'positive' : 'negative';
+      const sign = isPositive ? '+' : '-';
+
+      const formattedCurrent = Format.addCommas(currentGain);
+      const formattedChange = Format.addCommas(Math.abs(change));
+      const formattedPercentage =
+        percentage !== null ? `${sign}${Math.abs(percentage).toFixed(1)}%` : '';
+
+      const periodLabel =
+        State.gainsSettings.period === 1
+          ? 'in last 24h'
+          : State.gainsSettings.period === 3
+          ? 'in last 3d'
+          : 'in last 7d';
+
+      item.innerHTML = `
+        <div class="gains-position">${index + 1}</div>
+        <img class="gains-thumbnail" src="${video.thumbnail}" alt="${
+        video.title
+      }" 
+             onerror="this.style.display='none'" loading="lazy">
+        <div class="gains-info">
+          <div class="gains-title">${Format.addCommasToTitle(video.title)}</div>
+        </div>
+        <div class="gains-stats">
+          <div class="gains-current">
+            ${formattedCurrent}
+            <span class="gains-period-label">${periodLabel}</span>
+          </div>
+          <div class="gains-change ${changeClass}">
+            <span class="gains-arrow">${arrow}</span>
+            ${sign}${formattedChange} change
+            ${
+              formattedPercentage
+                ? `<span class="gains-percentage">(${formattedPercentage})</span>`
+                : ''
+            }
+          </div>
+        </div>
+      `;
+
+      item.addEventListener('click', () => {
+        Loader.loadVideo(video.videoId, State.currentChannel);
+        const searchInput = Dom.get('searchInput');
+        if (searchInput)
+          searchInput.value = Format.addCommasToTitle(video.title);
+      });
+
+      fragment.appendChild(item);
+    });
+
+    list.appendChild(fragment);
+
+    const heading = document.querySelector('.gains-header h2');
+    if (heading) {
+      heading.textContent = 'Top Video Gains';
+    }
+
+    const subtitle = document.querySelector('.gains-subtitle');
+    const metricName =
+      State.gainsSettings.metric.charAt(0).toUpperCase() +
+      State.gainsSettings.metric.slice(1);
+    const periodText =
+      State.gainsSettings.period === 1
+        ? '24 Hours'
+        : `${State.gainsSettings.period} Days`;
+    if (subtitle) {
+      subtitle.textContent = `${metricName} Growth in the Last ${periodText}`;
+    }
+  },
+
+  async updateInstant(refetch = false) {
+    if (!State.isGainsView || !State.currentChannel) return;
+
+    const list = Dom.get('gainsList');
+
+    const cacheKey = `${State.currentChannel}-${State.gainsSettings.metric}-${State.gainsSettings.filter}-${State.gainsSettings.period}`;
+    const cached = this.allVideosCache.get(cacheKey);
+
+    if (cached && !refetch) {
+      this.display(cached, State.gainsSettings.count);
+      return;
+    }
+
+    if (list) {
+      list.innerHTML =
+        '<div style="text-align:center;padding:20px;color:var(--muted-text-color);">Updating gains...</div>';
+    }
+
+    if (cached) {
+      this.display(cached, State.gainsSettings.count);
+    }
+
+    try {
+      const videos = await this.fetch(
+        State.currentChannel,
+        State.gainsSettings.metric,
+        State.gainsSettings.filter,
+        State.gainsSettings.period
+      );
+      if (State.isGainsView) {
+        this.display(videos, State.gainsSettings.count);
+      }
+    } catch (error) {
+      if (list && !cached) {
+        list.innerHTML =
+          '<div style="text-align:center;padding:20px;color:red;">Error loading gains. Please try again.</div>';
+      }
+    }
+  },
+
+  bindButtons() {
+    document.querySelectorAll('.control-button').forEach(button => {
+      button.addEventListener('click', e => {
+        const btn = e.currentTarget;
+        const group = btn.dataset.group;
+
+        document
+          .querySelectorAll(`.control-button[data-group="${group}"]`)
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        if (group === 'period') {
+          State.gainsSettings.period = parseInt(btn.dataset.period);
+          this.updateInstant(true);
+        } else if (group === 'filter') {
+          State.gainsSettings.filter = btn.dataset.filter;
+          this.updateInstant(true);
+        } else if (group === 'metric') {
+          State.gainsSettings.metric = btn.dataset.metric;
+          this.updateInstant(true);
+        }
+      });
+    });
+  },
+
+  bindInput() {
+    const countSlider = Dom.get('gainsCountSlider');
+    const countValue = Dom.get('gainsCountValue');
+
+    if (countValue) countValue.textContent = State.gainsSettings.count;
+
+    if (countSlider) {
+      countSlider.value = State.gainsSettings.count;
+
+      countSlider.addEventListener(
+        'input',
+        e => {
+          State.gainsSettings.count = parseInt(e.target.value);
+          if (countValue) countValue.textContent = State.gainsSettings.count;
+
+          clearTimeout(this.updateTimeout);
+          this.updateTimeout = setTimeout(() => this.updateInstant(false), 50);
+        },
+        { passive: true }
+      );
+    }
+  },
+
+  init() {
+    this.bindButtons();
+    this.bindInput();
+  },
+};
+
 const Theme = {
   updateIcons(theme) {
     const iconColor = theme === 'light' ? '000000' : 'ffffff';
@@ -1438,6 +1716,30 @@ const Search = {
       Loader.loadChannel(defaultCh.id, defaultCh.avatar, defaultCh.id, true);
     });
 
+    const gainsOpt = Dom.create('div', 'dropdown-list-item bold');
+    gainsOpt.innerHTML = `
+      <div style="display: flex; align-items: center;">
+        <i class="fas fa-chart-line" style="margin-right: 10px; color: var(--primary-color); font-size: 1.2rem;"></i>
+        Top Video Gains
+      </div>
+    `;
+    dropdown.appendChild(gainsOpt);
+
+    gainsOpt.addEventListener('click', () => {
+      const input = Dom.get('searchInput');
+      if (input) input.value = 'Top Video Gains';
+      dropdown.classList.remove('show');
+
+      const defaultCh = Config.channels[0];
+      Loader.loadChannel(
+        defaultCh.id,
+        defaultCh.avatar,
+        defaultCh.id,
+        false,
+        true
+      );
+    });
+
     Config.channels.forEach(channel => {
       const option = this.createChannelOption(channel);
       dropdown.appendChild(option);
@@ -1446,7 +1748,13 @@ const Search = {
         const input = Dom.get('searchInput');
         if (input) input.value = channel.name;
         dropdown.classList.remove('show');
-        Loader.loadChannel(channel.id, channel.avatar, channel.id, false);
+        Loader.loadChannel(
+          channel.id,
+          channel.avatar,
+          channel.id,
+          false,
+          false
+        );
       });
     });
   },
@@ -1489,12 +1797,29 @@ const Search = {
       const defaultCh = Config.channels[0];
       const input = Dom.get('searchInput');
       if (input) input.value = 'Top Video Rankings';
-      Loader.loadChannel(defaultCh.id, defaultCh.avatar, defaultCh.id, true);
+      Loader.loadChannel(
+        defaultCh.id,
+        defaultCh.avatar,
+        defaultCh.id,
+        true,
+        false
+      );
+    } else if (videoId === 'gains') {
+      const defaultCh = Config.channels[0];
+      const input = Dom.get('searchInput');
+      if (input) input.value = 'Top Video Gains';
+      Loader.loadChannel(
+        defaultCh.id,
+        defaultCh.avatar,
+        defaultCh.id,
+        false,
+        true
+      );
     } else if (channelMap[videoId]) {
       const channel = channelMap[videoId];
       const input = Dom.get('searchInput');
       if (input) input.value = channel.name;
-      Loader.loadChannel(channel.id, channel.avatar, channel.id, false);
+      Loader.loadChannel(channel.id, channel.avatar, channel.id, false, false);
     } else if (videoId && Array.isArray(videos)) {
       const matching = videos.find(v => v.videoId === videoId);
       if (matching) {
@@ -1502,12 +1827,12 @@ const Search = {
         if (input) input.value = Format.addCommasToTitle(matching.title);
         Loader.loadVideo(matching.videoId, 'mrbeast');
       } else {
-        this.loadDefaultRankings();
+        this.loadDefaultGains();
       }
     } else if (Array.isArray(videos) && videos.length > 0) {
       this.loadDefaultVideo(videos);
     } else {
-      this.loadDefaultRankings();
+      this.loadDefaultGains();
     }
   },
 
@@ -1520,11 +1845,17 @@ const Search = {
     Loader.loadVideo(recent.videoId, 'mrbeast');
   },
 
-  loadDefaultRankings() {
+  loadDefaultGains() {
     const defaultCh = Config.channels[0];
     const input = Dom.get('searchInput');
-    if (input) input.value = 'Top Video Rankings';
-    Loader.loadChannel(defaultCh.id, defaultCh.avatar, defaultCh.id, true);
+    if (input) input.value = 'Top Video Gains';
+    Loader.loadChannel(
+      defaultCh.id,
+      defaultCh.avatar,
+      defaultCh.id,
+      false,
+      true
+    );
   },
 
   async fetchInitialVideos() {
@@ -1538,10 +1869,10 @@ const Search = {
         this.addVideoOpts(data.videos);
         this.handleUrlParams(data.videos);
       } else {
-        this.loadDefaultRankings();
+        this.loadDefaultGains();
       }
     } catch (error) {
-      this.loadDefaultRankings();
+      this.loadDefaultGains();
     }
   },
 
@@ -1624,24 +1955,35 @@ const Loader = {
     Dom.show('videoInfoCard');
   },
 
-  async loadChannel(channelId, profileUrl, _, showRankings = false) {
+  async loadChannel(
+    channelId,
+    profileUrl,
+    _,
+    showRankings = false,
+    showGains = false
+  ) {
     State.reset();
     State.currentEntityId = channelId;
     State.currentChannel = channelId;
     State.isRankingsView = showRankings;
+    State.isGainsView = showGains;
 
     const headerTitle = document.querySelector('header h1');
     if (headerTitle) {
-      headerTitle.textContent = showRankings
-        ? 'Top Video Rankings'
-        : 'Channel Analytics';
+      if (showRankings) {
+        headerTitle.textContent = 'Top Video Rankings';
+      } else if (showGains) {
+        headerTitle.textContent = 'Top Video Gains';
+      } else {
+        headerTitle.textContent = 'Channel Analytics';
+      }
     }
 
     Dom.removeImg();
     await this.setupProfile(profileUrl);
-    Dom.updateUrl(showRankings ? 'rankings' : channelId);
 
     if (showRankings) {
+      Dom.updateUrl('rankings');
       Dom.setView('rankings');
 
       const list = Dom.get('rankingsList');
@@ -1682,7 +2024,67 @@ const Loader = {
             '<div style="text-align:center;padding:40px;color:red;">Error loading rankings. Please try again.</div>';
         }
       }
+    } else if (showGains) {
+      Dom.updateUrl('gains');
+      Dom.setView('gains');
+
+      const list = Dom.get('gainsList');
+      if (list) {
+        list.innerHTML =
+          '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading gains...</div>';
+      }
+
+      const countSlider = Dom.get('gainsCountSlider');
+      const countValue = Dom.get('gainsCountValue');
+
+      if (countSlider) countSlider.value = State.gainsSettings.count;
+      if (countValue) countValue.textContent = State.gainsSettings.count;
+      document
+        .querySelectorAll('.control-button[data-group="period"]')
+        .forEach(btn => {
+          btn.classList.toggle(
+            'active',
+            parseInt(btn.dataset.period) === State.gainsSettings.period
+          );
+        });
+
+      document
+        .querySelectorAll('.control-button[data-group="filter"]')
+        .forEach(btn => {
+          btn.classList.toggle(
+            'active',
+            btn.dataset.filter === State.gainsSettings.filter
+          );
+        });
+
+      document
+        .querySelectorAll('.control-button[data-group="metric"]')
+        .forEach(btn => {
+          btn.classList.toggle(
+            'active',
+            btn.dataset.metric === State.gainsSettings.metric
+          );
+        });
+
+      try {
+        const gains = await Gains.fetch(
+          channelId,
+          State.gainsSettings.metric,
+          State.gainsSettings.filter,
+          State.gainsSettings.period
+        );
+
+        if (State.isGainsView) {
+          Gains.display(gains, State.gainsSettings.count);
+        }
+      } catch (error) {
+        if (list) {
+          list.innerHTML =
+            '<div style="text-align:center;padding:40px;color:red;">Error loading gains. Please try again.</div>';
+        }
+      }
     } else {
+      Dom.updateUrl(channelId);
       Dom.setView('video');
       Dom.hide('videoInfoCard');
 
@@ -1737,6 +2139,7 @@ const Loader = {
     State.currentEntityId = videoId;
     State.currentChannel = channelId;
     State.isRankingsView = false;
+    State.isGainsView = false;
     Dom.updateUrl(videoId);
 
     Dom.setView('video');
@@ -1970,6 +2373,7 @@ const App = {
       Export.init();
       Layout.bindEvents();
       Rankings.init();
+      Gains.init();
     } catch (error) {
       this.showFallback(error);
     }

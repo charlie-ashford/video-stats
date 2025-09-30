@@ -1397,12 +1397,12 @@ const Gains = {
           ? 'in last 3d'
           : 'in last 7d';
 
-        const periodLabelGain = 
-          State.gainsSettings.period === 1
-            ? '24h'
-            : State.gainsSettings.period === 3
-            ? '3d'
-            : '7d';
+      const periodLabelGain =
+        State.gainsSettings.period === 1
+          ? '24h'
+          : State.gainsSettings.period === 3
+          ? '3d'
+          : '7d';
 
       item.innerHTML = `
         <div class="gains-position">${index + 1}</div>
@@ -1444,7 +1444,7 @@ const Gains = {
 
     const heading = document.querySelector('.gains-header h2');
     if (heading) {
-      heading.textContent = 'Top Video Gains';
+      heading.textContent = `Top ${State.gainsSettings.count} Video Gains`;
     }
 
     const subtitle = document.querySelector('.gains-subtitle');
@@ -1456,7 +1456,7 @@ const Gains = {
         ? '24 Hours'
         : `${State.gainsSettings.period} Days`;
     if (subtitle) {
-      subtitle.textContent = `${metricName} Growth in the Last ${periodText}`;
+      subtitle.textContent = `${metricName} in Last ${periodText}`;
     }
   },
 

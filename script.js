@@ -13,6 +13,8 @@ const Config = {
     },
     rankings: 'https://api.communitrics.com/videos/top10',
     gains: 'https://api.communitrics.com/videos/gains',
+    hourly: (videoId, channel) =>
+      `https://api.communitrics.com/videos/hourly/${videoId}?channel=${channel}`,
     combinedHistory: {
       mrbeast: 'https://api.communitrics.com/combined-history',
       byChannel: channel =>
@@ -104,6 +106,8 @@ const State = {
   pendingYAxisRange: null,
   isRankingsView: false,
   isGainsView: false,
+  isHourlyMode: false,
+  hourlyData: null,
   rankingsSettings: {
     videoCount: Config.rankings.defaultCount,
     timePeriod: Config.rankings.defaultHours,
@@ -151,6 +155,8 @@ const State = {
     this.processedData = {};
     this.isChartReady = false;
     this.pendingYAxisRange = null;
+    this.isHourlyMode = false;
+    this.hourlyData = null;
   },
 };
 
@@ -198,14 +204,13 @@ const Dom = {
     if (existing) existing.remove();
   },
 
-
-	updateUrl(path, channel = null) {
-	  let newUrl = `${window.location.origin}${window.location.pathname}?data=${path}`;
-	  if (channel) {
-	    newUrl += `&channel=${channel}`;
-	  }
-	  window.history.replaceState({ path, channel }, '', newUrl);
-	},
+  updateUrl(path, channel = null) {
+    let newUrl = `${window.location.origin}${window.location.pathname}?data=${path}`;
+    if (channel && channel !== 'mrbeast') {
+      newUrl += `&channel=${channel}`;
+    }
+    window.history.replaceState({ path, channel }, '', newUrl);
+  },
 
   debounce(callback, delay) {
     let timeoutId;
@@ -515,6 +520,74 @@ const ChartBuilder = {
     });
   },
 
+  hourlySeries(hourlyData) {
+    const metric = State.getMetricName();
+    const colors = [
+      '#FF6B6B',
+      '#4ECDC4',
+      '#45B7D1',
+      '#FFA07A',
+      '#98D8C8',
+      '#F7DC6F',
+      '#BB8FCE',
+    ];
+
+    const series = [];
+    const now = luxon.DateTime.now().setZone('America/New_York');
+    const currentHour = now.hour;
+
+    hourlyData.dates.forEach((dateStr, index) => {
+      const dateData = hourlyData.data[dateStr];
+      const values = dateData[metric];
+
+      const points = [];
+      const date = luxon.DateTime.fromISO(dateStr, {
+        zone: 'America/New_York',
+      });
+      const isToday =
+        date.toFormat('yyyy-MM-dd') === now.toFormat('yyyy-MM-dd');
+
+      let skipNext = false;
+
+      for (let hour = 0; hour < 24; hour++) {
+        const value = values[hour];
+
+        if (isToday && hour > currentHour) {
+          break;
+        }
+
+        if (skipNext) {
+          points.push([hour, null]);
+          skipNext = false;
+          continue;
+        }
+
+        if (value === null) {
+          points.push([hour, null]);
+          skipNext = true;
+          continue;
+        }
+
+        points.push([hour, value]);
+      }
+
+      if (points.length > 0) {
+        const label = date.toFormat('EEE, MMM d');
+
+        series.push({
+          name: label,
+          data: points,
+          color: colors[index % colors.length],
+          lineWidth: State.isMobile() ? 2 : 2.5,
+          type: 'line',
+          connectNulls: false,
+        });
+      }
+    });
+
+    return series;
+  },
+
   events() {
     return {
       load: function () {
@@ -538,7 +611,44 @@ const ChartBuilder = {
     };
   },
 
-  xAxis() {
+  xAxis(isHourly = false) {
+    if (isHourly) {
+      return {
+        title: {
+          text: 'Hour of Day (EST)',
+          style: {
+            color: Dom.getCssVar('--text-color'),
+            fontSize: State.isMobile() ? '13px' : '16px',
+            fontWeight: '600',
+          },
+          margin: State.isMobile() ? 15 : 25,
+        },
+        categories: Array.from({ length: 24 }, (_, i) => {
+          const hour = i % 12 || 12;
+          const period = i < 12 ? 'am' : 'pm';
+          return `${hour}${period}`;
+        }),
+        labels: {
+          style: {
+            color: Dom.getCssVar('--text-color'),
+            fontSize: State.isMobile() ? '11px' : '13px',
+            fontWeight: '500',
+          },
+          step: State.isMobile() ? 2 : 1,
+          rotation: 0,
+          align: 'center',
+        },
+        gridLineColor: Dom.getCssVar('--border-color'),
+        gridLineWidth: 1,
+        gridLineDashStyle: 'Dash',
+        lineColor: Dom.getCssVar('--border-color'),
+        lineWidth: 2,
+        tickColor: Dom.getCssVar('--border-color'),
+        tickWidth: 1,
+        tickLength: 5,
+      };
+    }
+
     return {
       title: {
         text: 'Time (EST)',
@@ -608,13 +718,22 @@ const ChartBuilder = {
     };
   },
 
-  yAxis(range) {
+  yAxis(range, isHourly = false) {
     const isUploads =
+      !isHourly &&
       State.selectedMetricIndex === 3 &&
       State.processedData.series.uploads?.length > 0;
+
+    const metricName = isHourly
+      ? `Hourly ${
+          State.getMetricName().charAt(0).toUpperCase() +
+          State.getMetricName().slice(1)
+        }`
+      : 'Count';
+
     const config = {
       title: {
-        text: 'Count',
+        text: metricName,
         style: {
           color: Dom.getCssVar('--text-color'),
           fontSize: State.isMobile() ? '13px' : '16px',
@@ -666,7 +785,7 @@ const ChartBuilder = {
     return config;
   },
 
-  tooltip() {
+  tooltip(isHourly = false) {
     return {
       backgroundColor: Dom.getCssVar('--card-background-color'),
       borderColor: Dom.getCssVar('--border-color'),
@@ -675,21 +794,35 @@ const ChartBuilder = {
         fontSize: State.isMobile() ? '12px' : '14px',
       },
       formatter: function () {
-        const dt = luxon.DateTime.fromMillis(this.x, {
-          zone: 'America/New_York',
-        });
-        const date = dt.toFormat('yyyy-MM-dd');
-        const time = dt.toFormat('HH:mm:ss');
-        let tooltip = `<b>${date} ${time}</b><br>`;
-        for (const point of this.points) {
-          const value = State.isMobile()
-            ? Format.compact(point.y)
-            : point.y.toLocaleString();
-          tooltip += `${point.series.name}: ${value}<br>`;
+        if (isHourly) {
+          const metricName =
+            State.getMetricName().charAt(0).toUpperCase() +
+            State.getMetricName().slice(1);
+          const hour = this.x % 12 || 12;
+          const period = this.x < 12 ? 'am' : 'pm';
+          return `
+            <b>${this.series.name}</b><br/>
+            ${hour}${period}: ${Format.addCommas(
+            this.y
+          )} ${metricName.toLowerCase()}
+          `;
+        } else {
+          const dt = luxon.DateTime.fromMillis(this.x, {
+            zone: 'America/New_York',
+          });
+          const date = dt.toFormat('yyyy-MM-dd');
+          const time = dt.toFormat('HH:mm:ss');
+          let tooltip = `<b>${date} ${time} EST</b><br>`;
+          for (const point of this.points) {
+            const value = State.isMobile()
+              ? Format.compact(point.y)
+              : point.y.toLocaleString();
+            tooltip += `${point.series.name}: ${value}<br>`;
+          }
+          return tooltip;
         }
-        return tooltip;
       },
-      shared: true,
+      shared: !isHourly,
       useHTML: true,
       borderRadius: 10,
       shadow: true,
@@ -700,6 +833,10 @@ const ChartBuilder = {
 
 const Charts = {
   validate() {
+    if (State.isHourlyMode) {
+      return State.hourlyData && State.hourlyData.dates?.length > 0;
+    }
+
     if (!State.processedData.timestamps?.length) return false;
     const currentSeries = State.processedData.series[State.getMetricName()];
     return currentSeries && currentSeries.length > 0;
@@ -725,11 +862,6 @@ const Charts = {
       return false;
     }
 
-    const seriesConfig = ChartBuilder.series();
-    const currentSeries = DataProcessor.getCurrentSeries();
-    const yRange = DataProcessor.calcYRange(currentSeries);
-
-    if (!State.isChartReady) State.pendingYAxisRange = yRange;
     this.destroy();
     State.isChartReady = false;
 
@@ -740,17 +872,66 @@ const Charts = {
     }
 
     const cardBg = Dom.getCssVar('--card-background-color');
+    const textColor = Dom.getCssVar('--text-color');
+    const isHourly = State.isHourlyMode;
+
+    let seriesConfig, yRange;
+
+    if (isHourly) {
+      seriesConfig = ChartBuilder.hourlySeries(State.hourlyData);
+      const allValues = [];
+      seriesConfig.forEach(s => {
+        s.data.forEach(point => {
+          if (point && point[1] != null) allValues.push(point[1]);
+        });
+      });
+
+      if (allValues.length === 0) {
+        yRange = { min: 0, max: 100 };
+      } else {
+        const minVal = Math.min(...allValues);
+        const maxVal = Math.max(...allValues);
+        const range = maxVal - minVal;
+        const padding = Math.max(range * 0.05, 1);
+
+        let calcMin = minVal - padding;
+        const calcMax = maxVal + padding;
+
+        if (calcMin < 0 && minVal >= 0) {
+          calcMin = 0;
+        }
+
+        yRange = { min: calcMin, max: calcMax };
+      }
+    } else {
+      seriesConfig = ChartBuilder.series();
+      const currentSeries = DataProcessor.getCurrentSeries();
+      yRange = DataProcessor.calcYRange(currentSeries);
+    }
+
+    if (!State.isChartReady) State.pendingYAxisRange = yRange;
+
+    const chartTitle = isHourly
+      ? `Hourly ${
+          State.getMetricName().charAt(0).toUpperCase() +
+          State.getMetricName().slice(1)
+        } Gains - Last 7 Days`
+      : seriesConfig[State.selectedMetricIndex]?.name || 'Chart';
+
+    const chartHeight = isHourly
+      ? State.getChartHeight() + 120
+      : State.getChartHeight();
 
     State.chart = Highcharts.chart('videoChart', {
       chart: {
-        type: 'area',
+        type: isHourly ? 'line' : 'area',
         backgroundColor: cardBg,
         style: { fontFamily: "'Poppins', sans-serif", fontSize: '14px' },
         plotBackgroundColor: cardBg,
         plotBorderColor: Dom.getCssVar('--border-color'),
         plotBorderWidth: 1,
-        zoomType: 'x',
-        panning: { enabled: true, type: 'x' },
+        zoomType: isHourly ? undefined : 'x',
+        panning: { enabled: !isHourly, type: 'x' },
         panKey: 'shift',
         animation: State.isMobile()
           ? false
@@ -767,18 +948,19 @@ const Charts = {
             }
           },
         },
-        height: State.getChartHeight(),
-        spacingBottom: State.isMobile() ? 15 : 30,
+        height: chartHeight,
+        spacingBottom: isHourly ? 20 : State.isMobile() ? 15 : 30,
         spacingTop: State.isMobile() ? 10 : 25,
         spacingLeft: State.isMobile() ? 10 : 25,
         spacingRight: State.isMobile() ? 10 : 25,
         borderRadius: 12,
+        marginBottom: isHourly ? 130 : undefined,
       },
       boost: { enabled: false },
       title: {
-        text: seriesConfig[State.selectedMetricIndex]?.name || 'Chart',
+        text: chartTitle,
         style: {
-          color: Dom.getCssVar('--text-color'),
+          color: textColor,
           fontWeight: '700',
           fontSize: State.isMobile() ? '16px' : '22px',
           fontFamily: "'Poppins', sans-serif",
@@ -787,11 +969,26 @@ const Charts = {
         align: 'center',
       },
       credits: { enabled: false },
-      xAxis: ChartBuilder.xAxis(),
-      yAxis: ChartBuilder.yAxis(yRange),
+      xAxis: ChartBuilder.xAxis(isHourly),
+      yAxis: ChartBuilder.yAxis(yRange, isHourly),
       series: seriesConfig,
-      legend: { enabled: false },
-      tooltip: ChartBuilder.tooltip(),
+      legend: {
+        enabled: isHourly,
+        itemStyle: {
+          color: textColor,
+          fontWeight: '500',
+          fontSize: '13px',
+        },
+        itemHoverStyle: {
+          color: Dom.getCssVar('--hover-text-color'),
+        },
+        align: 'center',
+        verticalAlign: 'bottom',
+        layout: 'horizontal',
+        y: 10,
+        floating: false,
+      },
+      tooltip: ChartBuilder.tooltip(isHourly),
       plotOptions: {
         series: {
           animation: State.isMobile()
@@ -813,7 +1010,7 @@ const Charts = {
               lineWidthPlus: State.isMobile() ? 1 : 2,
               halo: { size: 8, opacity: 0.3 },
             },
-            inactive: { opacity: 0.6 },
+            inactive: { opacity: 0.2 },
           },
           turboThreshold: State.isMobile() ? 500 : 1000,
           cropThreshold: State.isMobile() ? 250 : 500,
@@ -823,6 +1020,9 @@ const Charts = {
           lineWidth: State.isMobile() ? 2.5 : 3.5,
           threshold: null,
         },
+        line: {
+          lineWidth: State.isMobile() ? 2 : 2.5,
+        },
       },
       responsive: {
         rules: [
@@ -830,7 +1030,7 @@ const Charts = {
             condition: { maxWidth: 480 },
             chartOptions: {
               chart: {
-                height: 280,
+                height: isHourly ? 360 : 280,
                 spacingBottom: 15,
                 spacingTop: 10,
                 spacingLeft: 10,
@@ -841,7 +1041,7 @@ const Charts = {
           },
           {
             condition: { maxWidth: 768 },
-            chartOptions: { chart: { height: 350 } },
+            chartOptions: { chart: { height: isHourly ? 430 : 350 } },
           },
         ],
       },
@@ -1558,6 +1758,135 @@ const Gains = {
   },
 };
 
+const HourlyMode = {
+  button: null,
+
+  createButton() {
+    if (this.button) return this.button;
+
+    const chartContainer = document.querySelector('.chart-container');
+    if (!chartContainer) return null;
+
+    this.button = Dom.create('button', 'hourly-mode-toggle');
+    this.button.innerHTML = `
+	      <i class="fas fa-clock"></i>
+	      <span>Hourly Gains</span>
+	    `;
+
+    this.button.addEventListener('click', () => this.toggle());
+
+    const title = chartContainer.querySelector('#videoChart');
+    if (title && title.parentElement) {
+      title.parentElement.insertBefore(this.button, title);
+    }
+
+    return this.button;
+  },
+
+  async toggle() {
+    if (!this.button) return;
+
+    if (State.isHourlyMode) {
+      State.isHourlyMode = false;
+      this.button.classList.remove('active');
+      this.button.innerHTML = `
+	        <i class="fas fa-clock"></i>
+	        <span>Hourly Gains</span>
+	      `;
+      await Charts.create();
+    } else {
+      if (!State.hourlyData) {
+        this.button.disabled = true;
+        this.button.innerHTML = `
+	          <i class="fas fa-spinner fa-spin"></i>
+	          <span>Loading...</span>
+	        `;
+
+        try {
+          const data = await this.fetchHourlyData(
+            State.currentEntityId,
+            State.currentChannel
+          );
+          State.hourlyData = data;
+        } catch (error) {
+          this.button.disabled = false;
+          this.button.innerHTML = `
+	            <i class="fas fa-clock"></i>
+	            <span>Hourly Gains</span>
+	          `;
+          alert(
+            'Failed to load hourly data. This video may not have enough data yet.'
+          );
+          return;
+        }
+
+        this.button.disabled = false;
+      }
+
+      State.isHourlyMode = true;
+      this.button.classList.add('active');
+      this.button.innerHTML = `
+	        <i class="fas fa-chart-area"></i>
+	        <span>Total Data</span>
+	      `;
+      await Charts.create();
+    }
+  },
+
+  async fetchHourlyData(videoId, channel) {
+    const url = Config.api.hourly(videoId, channel);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  show() {
+    if (State.getMetricName() === 'comments') {
+      this.hide();
+      return;
+    }
+
+    if (State.isRankingsView || State.isGainsView) {
+      this.hide();
+      return;
+    }
+
+    if (State.processedData.series?.uploads?.length > 0) {
+      this.hide();
+      return;
+    }
+
+    if (!this.button) {
+      this.createButton();
+    }
+    if (this.button) {
+      this.button.style.display = 'flex';
+    }
+  },
+
+  hide() {
+    if (this.button) {
+      this.button.style.display = 'none';
+    }
+  },
+
+  reset() {
+    State.isHourlyMode = false;
+    State.hourlyData = null;
+    if (this.button) {
+      this.button.classList.remove('active');
+      this.button.innerHTML = `
+	        <i class="fas fa-clock"></i>
+	        <span>Hourly Gains</span>
+	      `;
+    }
+  },
+};
+
 const Theme = {
   updateIcons(theme) {
     const iconColor = theme === 'light' ? '000000' : 'ffffff';
@@ -1662,7 +1991,22 @@ const Search = {
         card.classList.add('active');
         card.style.setProperty('--active-card-color', colors[index]);
         State.selectedMetricIndex = index;
-        Charts.redraw();
+
+        if (State.isHourlyMode && State.getMetricName() === 'comments') {
+          State.isHourlyMode = false;
+          HourlyMode.reset();
+          HourlyMode.hide();
+          await Charts.create();
+        } else if (State.isHourlyMode) {
+          await Charts.create();
+        } else {
+          if (State.getMetricName() === 'comments') {
+            HourlyMode.hide();
+          } else if (!State.isRankingsView && !State.isGainsView) {
+            HourlyMode.show();
+          }
+          Charts.redraw();
+        }
       });
     });
 
@@ -1786,7 +2130,7 @@ const Search = {
         const input = Dom.get('searchInput');
         if (input) input.value = e.currentTarget.textContent;
         dropdown.classList.remove('show');
-        Loader.loadVideo(selectedId, State.currentChannel);
+        Loader.loadVideo(selectedId, 'mrbeast');
       });
 
       fragment.appendChild(item);
@@ -1969,6 +2313,8 @@ const Loader = {
     showGains = false
   ) {
     State.reset();
+    HourlyMode.reset();
+    HourlyMode.hide();
     State.currentEntityId = channelId;
     State.currentChannel = channelId;
     State.isRankingsView = showRankings;
@@ -2148,11 +2494,12 @@ const Loader = {
 
   async loadVideo(videoId, channelId = 'mrbeast') {
     State.reset();
+    HourlyMode.reset();
     State.currentEntityId = videoId;
     State.currentChannel = channelId;
     State.isRankingsView = false;
     State.isGainsView = false;
-    Dom.updateUrl(videoId);
+    Dom.updateUrl(videoId, channelId);
 
     Dom.setView('video');
     const exportBtn = Dom.get('exportButton');
@@ -2223,6 +2570,8 @@ const Loader = {
         Tables.create(dailyData, currentData, true);
 
         Dom.show('videoInfoCard');
+
+        HourlyMode.show();
       } else {
         throw new Error('Invalid video data format');
       }

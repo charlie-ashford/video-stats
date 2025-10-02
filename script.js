@@ -13,8 +13,12 @@ const Config = {
     },
     rankings: 'https://api.communitrics.com/videos/top10',
     gains: 'https://api.communitrics.com/videos/gains',
-    hourly: (videoId, channel) =>
-      `https://api.communitrics.com/videos/hourly/${videoId}?channel=${channel}`,
+    hourly: (videoId, channel, startDate, endDate) => {
+      let url = `https://api.communitrics.com/videos/hourly/${videoId}?channel=${channel}`;
+      if (startDate) url += `&startDate=${startDate}`;
+      if (endDate) url += `&endDate=${endDate}`;
+      return url;
+    },
     combinedHistory: {
       mrbeast: 'https://api.communitrics.com/combined-history',
       byChannel: channel =>
@@ -100,6 +104,9 @@ const Config = {
     minCount: 3,
     maxCount: 50,
   },
+  hourly: {
+    defaultDays: 7,
+  },
 };
 
 const State = {
@@ -115,6 +122,10 @@ const State = {
   isGainsView: false,
   isHourlyMode: false,
   hourlyData: null,
+  hourlyDateRange: {
+    start: null,
+    end: null,
+  },
   rankingsSettings: {
     videoCount: Config.rankings.defaultCount,
     timePeriod: Config.rankings.defaultHours,
@@ -165,6 +176,7 @@ const State = {
     this.pendingYAxisRange = null;
     this.isHourlyMode = false;
     this.hourlyData = null;
+    this.hourlyDateRange = { start: null, end: null };
   },
 };
 
@@ -320,6 +332,10 @@ const Format = {
   percentage(current, previous) {
     if (!previous || previous === 0) return null;
     return ((current - previous) / previous) * 100;
+  },
+
+  toISODate(luxonDateTime) {
+    return luxonDateTime.toFormat('yyyy-MM-dd');
   },
 };
 
@@ -626,6 +642,40 @@ const ChartBuilder = {
     };
   },
 
+  calculateOptimalTickInterval(axis, dataRange, minPixelsBetweenTicks = 80) {
+    const axisLength =
+      axis === 'x'
+        ? (State.chart?.chartWidth || 800) - 100
+        : (State.chart?.chartHeight || 400) - 100;
+
+    const maxTicks = Math.floor(axisLength / minPixelsBetweenTicks);
+    const roughInterval = dataRange / maxTicks;
+
+    if (axis === 'x') {
+      const hour = 3600000;
+      const day = 86400000;
+      const week = 604800000;
+
+      if (roughInterval < 6 * hour) return 6 * hour;
+      if (roughInterval < 12 * hour) return 12 * hour;
+      if (roughInterval < day) return day;
+      if (roughInterval < 2 * day) return 2 * day;
+      if (roughInterval < 7 * day) return 7 * day;
+      return Math.ceil(roughInterval / week) * week;
+    }
+
+    const magnitude = Math.pow(10, Math.floor(Math.log10(roughInterval)));
+    const normalized = roughInterval / magnitude;
+
+    let nice;
+    if (normalized < 1.5) nice = 1;
+    else if (normalized < 3) nice = 2;
+    else if (normalized < 7) nice = 5;
+    else nice = 10;
+
+    return nice * magnitude;
+  },
+
   xAxis(isHourly = false) {
     if (isHourly) {
       return {
@@ -649,9 +699,26 @@ const ChartBuilder = {
             fontSize: State.isMobile() ? '11px' : '13px',
             fontWeight: '500',
           },
-          step: State.isMobile() ? 2 : 1,
-          rotation: 0,
-          align: 'center',
+          autoRotation: [-45, -90],
+          formatter: function () {
+            const visibleTicks = this.axis.tickPositions || [];
+            const pixelsBetween = this.axis.width / visibleTicks.length;
+
+            if (State.isMobile() && pixelsBetween < 50) {
+              return this.pos % 2 === 0 ? this.value : '';
+            }
+            return this.value;
+          },
+        },
+        tickPositioner: function () {
+          const positions = [];
+          const dataMax = 23;
+          const interval = State.isMobile() ? 2 : 1;
+
+          for (let i = 0; i <= dataMax; i += interval) {
+            positions.push(i);
+          }
+          return positions;
         },
         gridLineColor: Dom.getCssVar('--border-color'),
         gridLineWidth: 1,
@@ -680,10 +747,13 @@ const ChartBuilder = {
           const dt = luxon.DateTime.fromMillis(this.value, {
             zone: 'America/New_York',
           });
+
+          const range = this.axis.max - this.axis.min;
+
           if (State.isMobile()) {
-            return dt.toFormat('MM/dd<br/>HH:mm');
+            if (range <= 86400000) return dt.toFormat('HH:mm');
+            return dt.toFormat('MM/dd');
           } else {
-            const range = this.axis.max - this.axis.min;
             if (range <= 86400000) return dt.toFormat('HH:mm<br/>MM/dd');
             if (range <= 604800000) return dt.toFormat('MM/dd<br/>HH:mm');
             return dt.toFormat('MMM dd<br/>yyyy');
@@ -694,9 +764,29 @@ const ChartBuilder = {
           fontSize: State.isMobile() ? '11px' : '13px',
           fontWeight: '500',
         },
-        step: State.isMobile() ? 2 : 1,
-        rotation: 0,
-        align: 'center',
+        autoRotation: [-10, -20, -30, -45],
+        overflow: 'justify',
+      },
+      tickPositioner: function () {
+        const dataMin = this.dataMin;
+        const dataMax = this.dataMax;
+        const dataRange = dataMax - dataMin;
+
+        const optimalInterval = ChartBuilder.calculateOptimalTickInterval(
+          'x',
+          dataRange,
+          State.isMobile() ? 60 : 80
+        );
+
+        const positions = [];
+        let current = Math.ceil(dataMin / optimalInterval) * optimalInterval;
+
+        while (current <= dataMax) {
+          positions.push(current);
+          current += optimalInterval;
+        }
+
+        return positions;
       },
       gridLineColor: Dom.getCssVar('--border-color'),
       gridLineWidth: 1,
@@ -930,11 +1020,15 @@ const Charts = {
       ? `Hourly ${
           State.getMetricName().charAt(0).toUpperCase() +
           State.getMetricName().slice(1)
-        } Gains - Last 7 Days`
+        } Gains`
       : seriesConfig[State.selectedMetricIndex]?.name || 'Chart';
 
+    const legendItemCount = isHourly ? seriesConfig.length : 0;
+    const legendHeight = isHourly
+      ? Math.min(Math.ceil(legendItemCount / 3) * 25, 75)
+      : 0;
     const chartHeight = isHourly
-      ? State.getChartHeight() + 120
+      ? State.getChartHeight() + 80 + legendHeight
       : State.getChartHeight();
 
     State.chart = Highcharts.chart('videoChart', {
@@ -964,12 +1058,12 @@ const Charts = {
           },
         },
         height: chartHeight,
-        spacingBottom: isHourly ? 20 : State.isMobile() ? 15 : 30,
+        spacingBottom: State.isMobile() ? 15 : 30,
         spacingTop: State.isMobile() ? 10 : 25,
         spacingLeft: State.isMobile() ? 10 : 25,
         spacingRight: State.isMobile() ? 10 : 25,
         borderRadius: 12,
-        marginBottom: isHourly ? 130 : undefined,
+        marginBottom: isHourly ? 80 + legendHeight : 100,
       },
       boost: { enabled: false },
       title: {
@@ -992,7 +1086,7 @@ const Charts = {
         itemStyle: {
           color: textColor,
           fontWeight: '500',
-          fontSize: '13px',
+          fontSize: State.isMobile() ? '11px' : '13px',
         },
         itemHoverStyle: {
           color: Dom.getCssVar('--hover-text-color'),
@@ -1000,8 +1094,53 @@ const Charts = {
         align: 'center',
         verticalAlign: 'bottom',
         layout: 'horizontal',
-        y: 10,
+        y: 0,
         floating: false,
+        maxHeight: legendHeight,
+        navigation: {
+          enabled: true,
+          style: {
+            color: textColor,
+          },
+        },
+        events: {
+          itemClick: function (event) {
+            const chart = this.chart;
+            setTimeout(() => {
+              const allValues = [];
+              chart.series.forEach(series => {
+                if (series.visible || series === event.target) {
+                  series.data.forEach(point => {
+                    if (point && point.y != null) {
+                      allValues.push(point.y);
+                    }
+                  });
+                }
+              });
+
+              if (allValues.length > 0) {
+                const minVal = Math.min(...allValues);
+                const maxVal = Math.max(...allValues);
+                const range = maxVal - minVal;
+                const padding = Math.max(range * 0.05, 1);
+
+                let calcMin = minVal - padding;
+                const calcMax = maxVal + padding;
+
+                if (calcMin < 0 && minVal >= 0) calcMin = 0;
+
+                chart.yAxis[0].setExtremes(calcMin, calcMax, true, true);
+              }
+            }, 10);
+            return true;
+          },
+        },
+        itemMarginBottom: 5,
+        itemMarginTop: 5,
+        padding: 8,
+        backgroundColor: cardBg,
+        borderRadius: 8,
+        itemDistance: State.isMobile() ? 10 : 20,
       },
       tooltip: ChartBuilder.tooltip(isHourly),
       plotOptions: {
@@ -1045,18 +1184,32 @@ const Charts = {
             condition: { maxWidth: 480 },
             chartOptions: {
               chart: {
-                height: isHourly ? 360 : 280,
+                height: isHourly ? 360 + legendHeight : 280,
                 spacingBottom: 15,
                 spacingTop: 10,
                 spacingLeft: 10,
                 spacingRight: 10,
+                marginBottom: isHourly ? 60 + legendHeight : 60,
               },
               title: { style: { fontSize: '16px' }, margin: 15 },
+              legend: {
+                itemStyle: { fontSize: '10px' },
+                itemDistance: 8,
+              },
             },
           },
           {
             condition: { maxWidth: 768 },
-            chartOptions: { chart: { height: isHourly ? 430 : 350 } },
+            chartOptions: {
+              chart: {
+                height: isHourly ? 430 + legendHeight : 350,
+                marginBottom: isHourly ? 70 + legendHeight : 70,
+              },
+              legend: {
+                itemStyle: { fontSize: '11px' },
+                itemDistance: 12,
+              },
+            },
           },
         ],
       },
@@ -1794,6 +1947,10 @@ const Gains = {
 
 const HourlyMode = {
   button: null,
+  datePickerButton: null,
+  modal: null,
+  startDateInput: null,
+  endDateInput: null,
 
   createButton() {
     if (this.button) return this.button;
@@ -1817,6 +1974,171 @@ const HourlyMode = {
     return this.button;
   },
 
+  createDatePickerButton() {
+    if (this.datePickerButton) return this.datePickerButton;
+
+    const chartContainer = document.querySelector('.chart-container');
+    if (!chartContainer) return null;
+
+    this.datePickerButton = Dom.create('button', 'hourly-date-picker-button');
+    this.datePickerButton.innerHTML = '<i class="fas fa-calendar-alt"></i>';
+    this.datePickerButton.title = 'Select date range';
+
+    this.datePickerButton.addEventListener('click', () => this.openModal());
+
+    const title = chartContainer.querySelector('#videoChart');
+    if (title && title.parentElement) {
+      title.parentElement.insertBefore(this.datePickerButton, title);
+    }
+
+    return this.datePickerButton;
+  },
+
+  createModal() {
+    if (this.modal) return this.modal;
+
+    this.modal = Dom.create('div', 'date-picker-modal');
+    this.modal.innerHTML = `
+      <div class="date-picker-content">
+        <div class="date-picker-header">
+          <h3>Select Date Range</h3>
+          <button class="date-picker-close" aria-label="Close">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="date-picker-body">
+          <div class="date-input-group">
+            <label for="modalStartDate">Start Date</label>
+            <input type="date" id="modalStartDate" />
+          </div>
+          <div class="date-input-group">
+            <label for="modalEndDate">End Date</label>
+            <input type="date" id="modalEndDate" />
+          </div>
+        </div>
+        <div class="date-picker-actions">
+          <button class="date-picker-button secondary" id="cancelDatePicker">
+            Cancel
+          </button>
+          <button class="date-picker-button primary" id="applyDatePicker">
+            Apply
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(this.modal);
+
+    this.startDateInput = document.getElementById('modalStartDate');
+    this.endDateInput = document.getElementById('modalEndDate');
+
+    this.modal.addEventListener('click', e => {
+      if (e.target === this.modal) {
+        this.closeModal();
+      }
+    });
+
+    const closeBtn = this.modal.querySelector('.date-picker-close');
+    closeBtn.addEventListener('click', () => this.closeModal());
+
+    const cancelBtn = document.getElementById('cancelDatePicker');
+    cancelBtn.addEventListener('click', () => this.closeModal());
+
+    const applyBtn = document.getElementById('applyDatePicker');
+    applyBtn.addEventListener('click', () => this.applyDateRange());
+
+    return this.modal;
+  },
+
+  openModal() {
+    if (!this.modal) {
+      this.createModal();
+    }
+
+    if (this.startDateInput && this.endDateInput) {
+      const end = luxon.DateTime.now().setZone('America/New_York');
+      const start = State.hourlyDateRange.start
+        ? luxon.DateTime.fromISO(State.hourlyDateRange.start)
+        : end.minus({ days: Config.hourly.defaultDays });
+
+      this.startDateInput.value = Format.toISODate(start);
+      this.endDateInput.value =
+        State.hourlyDateRange.end || Format.toISODate(end);
+      this.endDateInput.max = Format.toISODate(end);
+    }
+
+    this.modal.classList.add('show');
+  },
+
+  closeModal() {
+    if (this.modal) {
+      this.modal.classList.remove('show');
+    }
+  },
+
+  async applyDateRange() {
+    if (!this.startDateInput || !this.endDateInput) return;
+
+    const startDate = this.startDateInput.value;
+    const endDate = this.endDateInput.value;
+
+    if (!startDate || !endDate) {
+      alert('Please select both start and end dates');
+      return;
+    }
+
+    if (startDate > endDate) {
+      alert('Start date must be before end date');
+      return;
+    }
+
+    this.closeModal();
+
+    if (!State.isHourlyMode) return;
+
+    try {
+      this.button.disabled = true;
+      this.button.innerHTML = `
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>Updating...</span>
+      `;
+
+      State.hourlyDateRange.start = startDate;
+      State.hourlyDateRange.end = endDate;
+
+      const data = await this.fetchHourlyData(
+        State.currentEntityId,
+        State.currentChannel,
+        startDate,
+        endDate
+      );
+
+      State.hourlyData = data;
+      await Charts.create();
+
+      this.button.innerHTML = `
+        <i class="fas fa-chart-area"></i>
+        <span>Total Data</span>
+      `;
+    } catch (error) {
+      alert('Failed to update hourly data. Please try again.');
+      this.button.innerHTML = `
+        <i class="fas fa-chart-area"></i>
+        <span>Total Data</span>
+      `;
+    } finally {
+      this.button.disabled = false;
+    }
+  },
+
+  setDefaultDates() {
+    const end = luxon.DateTime.now().setZone('America/New_York');
+    const start = end.minus({ days: Config.hourly.defaultDays });
+
+    State.hourlyDateRange.start = Format.toISODate(start);
+    State.hourlyDateRange.end = Format.toISODate(end);
+  },
+
   async toggle() {
     if (!this.button) return;
 
@@ -1827,48 +2149,60 @@ const HourlyMode = {
         <i class="fas fa-clock"></i>
         <span>Hourly Gains</span>
       `;
-      await Charts.create();
-    } else {
-      if (!State.hourlyData) {
-        this.button.disabled = true;
-        this.button.innerHTML = `
-          <i class="fas fa-spinner fa-spin"></i>
-          <span>Loading...</span>
-        `;
 
-        try {
-          const data = await this.fetchHourlyData(
-            State.currentEntityId,
-            State.currentChannel
-          );
-          State.hourlyData = data;
-        } catch (error) {
-          this.button.disabled = false;
-          this.button.innerHTML = `
-            <i class="fas fa-clock"></i>
-            <span>Hourly Gains</span>
-          `;
-          alert(
-            'Failed to load hourly data. This video may not have enough data yet.'
-          );
-          return;
-        }
-
-        this.button.disabled = false;
+      if (this.datePickerButton) {
+        this.datePickerButton.classList.remove('show');
       }
 
-      State.isHourlyMode = true;
-      this.button.classList.add('active');
-      this.button.innerHTML = `
-        <i class="fas fa-chart-area"></i>
-        <span>Total Data</span>
-      `;
       await Charts.create();
+    } else {
+      if (!this.datePickerButton) {
+        this.createDatePickerButton();
+      }
+
+      this.button.disabled = true;
+      this.button.innerHTML = `
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>Loading...</span>
+      `;
+
+      try {
+        if (!State.hourlyData) {
+          this.setDefaultDates();
+          const data = await this.fetchHourlyData(
+            State.currentEntityId,
+            State.currentChannel,
+            State.hourlyDateRange.start,
+            State.hourlyDateRange.end
+          );
+          State.hourlyData = data;
+        }
+
+        State.isHourlyMode = true;
+        this.button.classList.add('active');
+        this.button.innerHTML = `
+          <i class="fas fa-chart-area"></i>
+          <span>Total Data</span>
+        `;
+
+        if (this.datePickerButton) {
+          this.datePickerButton.classList.add('show');
+        }
+
+        await Charts.create();
+      } catch (error) {
+        State.isHourlyMode = false;
+        alert(
+          'Failed to load hourly data. This video may not have enough data yet.'
+        );
+      } finally {
+        this.button.disabled = false;
+      }
     }
   },
 
-  async fetchHourlyData(videoId, channel) {
-    const url = Config.api.hourly(videoId, channel);
+  async fetchHourlyData(videoId, channel, startDate, endDate) {
+    const url = Config.api.hourly(videoId, channel, startDate, endDate);
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1906,17 +2240,24 @@ const HourlyMode = {
     if (this.button) {
       this.button.style.display = 'none';
     }
+    if (this.datePickerButton) {
+      this.datePickerButton.classList.remove('show');
+    }
   },
 
   reset() {
     State.isHourlyMode = false;
     State.hourlyData = null;
+    State.hourlyDateRange = { start: null, end: null };
     if (this.button) {
       this.button.classList.remove('active');
       this.button.innerHTML = `
         <i class="fas fa-clock"></i>
         <span>Hourly Gains</span>
       `;
+    }
+    if (this.datePickerButton) {
+      this.datePickerButton.classList.remove('show');
     }
   },
 };
@@ -3043,9 +3384,9 @@ const App = {
           border-radius: 12px;
           box-shadow: 0 4px 20px rgba(0,0,0,0.1);
         ">
-          <h1 style="color: #db421f; margin-bottom: 20px;">Application Error</h1>
+          <h1 style="color: #db421f; margin-bottom: 20px;">Site Error</h1>
           <p style="color: #666; font-size: 18px; margin-bottom: 30px;">
-            The application failed to initialize properly.
+            The site failed to initialize properly.
           </p>
           <div style="
             background: #fff;

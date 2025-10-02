@@ -20,6 +20,7 @@ const Config = {
       byChannel: channel =>
         `https://api.communitrics.com/combined-history-${channel}`,
     },
+    allVideos: 'https://api.communitrics.com/allvideos',
   },
   channels: [
     {
@@ -84,7 +85,13 @@ const Config = {
     chartHeights: { mobile: 280, tablet: 350, desktop: 400, large: 450 },
     maxDataPoints: { mobile: 500, tablet: 1000, desktop: 2000, large: 3000 },
   },
-  rankings: { defaultCount: 10, maxCount: 25, defaultHours: 24, maxHours: 168 },
+  rankings: {
+    defaultCount: 10,
+    maxCount: 25,
+    defaultHours: 24,
+    maxHours: 168,
+    defaultFilter: 'long',
+  },
   gains: {
     defaultPeriod: 1,
     defaultFilter: 'short',
@@ -111,6 +118,7 @@ const State = {
   rankingsSettings: {
     videoCount: Config.rankings.defaultCount,
     timePeriod: Config.rankings.defaultHours,
+    filter: Config.rankings.defaultFilter,
   },
   gainsSettings: {
     period: Config.gains.defaultPeriod,
@@ -204,12 +212,19 @@ const Dom = {
     if (existing) existing.remove();
   },
 
-  updateUrl(path, channel = null) {
+  updateUrl(path, channel = null, replace = false) {
     let newUrl = `${window.location.origin}${window.location.pathname}?data=${path}`;
     if (channel && channel !== 'mrbeast') {
       newUrl += `&channel=${channel}`;
     }
-    window.history.replaceState({ path, channel }, '', newUrl);
+
+    const state = { path, channel };
+
+    if (replace) {
+      window.history.replaceState(state, '', newUrl);
+    } else {
+      window.history.pushState(state, '', newUrl);
+    }
   },
 
   debounce(callback, delay) {
@@ -1249,8 +1264,8 @@ const Tables = {
 const Rankings = {
   updateTimeouts: new Map(),
 
-  async fetch(channelId) {
-    const cacheKey = channelId;
+  async fetch(channelId, filter = 'long') {
+    const cacheKey = `${channelId}-${filter}`;
     const currentTime = Date.now();
 
     if (
@@ -1260,7 +1275,7 @@ const Rankings = {
       return State.cachedRankings.get(cacheKey);
     }
 
-    const url = `${Config.api.rankings}?channel=${channelId}`;
+    const url = `${Config.api.rankings}?channel=${channelId}&filter=${filter}`;
 
     try {
       const response = await fetch(url);
@@ -1432,10 +1447,11 @@ const Rankings = {
         '<div style="text-align:center;padding:20px;color:var(--muted-text-color);">Updating rankings...</div>';
     }
 
-    const cached = State.cachedRankings.get(State.currentChannel);
+    const cacheKey = `${State.currentChannel}-${State.rankingsSettings.filter}`;
+    const cached = State.cachedRankings.get(cacheKey);
     if (cached) this.display(cached);
 
-    this.fetch(State.currentChannel)
+    this.fetch(State.currentChannel, State.rankingsSettings.filter)
       .then(videos => {
         if (State.isRankingsView) this.display(videos);
       })
@@ -1496,8 +1512,26 @@ const Rankings = {
     }
   },
 
+  bindButtons() {
+    document.querySelectorAll('.rankings-filter-button').forEach(button => {
+      button.addEventListener('click', e => {
+        const btn = e.currentTarget;
+        const filter = btn.dataset.filter;
+
+        document
+          .querySelectorAll('.rankings-filter-button')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        State.rankingsSettings.filter = filter;
+        this.updateInstant();
+      });
+    });
+  },
+
   init() {
     this.bindSliders();
+    this.bindButtons();
   },
 };
 
@@ -1769,9 +1803,9 @@ const HourlyMode = {
 
     this.button = Dom.create('button', 'hourly-mode-toggle');
     this.button.innerHTML = `
-	      <i class="fas fa-clock"></i>
-	      <span>Hourly Gains</span>
-	    `;
+      <i class="fas fa-clock"></i>
+      <span>Hourly Gains</span>
+    `;
 
     this.button.addEventListener('click', () => this.toggle());
 
@@ -1790,17 +1824,17 @@ const HourlyMode = {
       State.isHourlyMode = false;
       this.button.classList.remove('active');
       this.button.innerHTML = `
-	        <i class="fas fa-clock"></i>
-	        <span>Hourly Gains</span>
-	      `;
+        <i class="fas fa-clock"></i>
+        <span>Hourly Gains</span>
+      `;
       await Charts.create();
     } else {
       if (!State.hourlyData) {
         this.button.disabled = true;
         this.button.innerHTML = `
-	          <i class="fas fa-spinner fa-spin"></i>
-	          <span>Loading...</span>
-	        `;
+          <i class="fas fa-spinner fa-spin"></i>
+          <span>Loading...</span>
+        `;
 
         try {
           const data = await this.fetchHourlyData(
@@ -1811,9 +1845,9 @@ const HourlyMode = {
         } catch (error) {
           this.button.disabled = false;
           this.button.innerHTML = `
-	            <i class="fas fa-clock"></i>
-	            <span>Hourly Gains</span>
-	          `;
+            <i class="fas fa-clock"></i>
+            <span>Hourly Gains</span>
+          `;
           alert(
             'Failed to load hourly data. This video may not have enough data yet.'
           );
@@ -1826,9 +1860,9 @@ const HourlyMode = {
       State.isHourlyMode = true;
       this.button.classList.add('active');
       this.button.innerHTML = `
-	        <i class="fas fa-chart-area"></i>
-	        <span>Total Data</span>
-	      `;
+        <i class="fas fa-chart-area"></i>
+        <span>Total Data</span>
+      `;
       await Charts.create();
     }
   },
@@ -1880,9 +1914,9 @@ const HourlyMode = {
     if (this.button) {
       this.button.classList.remove('active');
       this.button.innerHTML = `
-	        <i class="fas fa-clock"></i>
-	        <span>Hourly Gains</span>
-	      `;
+        <i class="fas fa-clock"></i>
+        <span>Hourly Gains</span>
+      `;
     }
   },
 };
@@ -1944,12 +1978,18 @@ const Theme = {
 };
 
 const Search = {
+  videoChannelMap: new Map(),
+  allVideosByChannel: {},
+  currentDropdownChannel: 'mrbeast',
+
   handleInput: Dom.debounce(function (e) {
     const term = e.target.value.toLowerCase();
     document.querySelectorAll('.dropdown-list-item').forEach(item => {
-      item.style.display = item.textContent.toLowerCase().includes(term)
-        ? ''
-        : 'none';
+      if (!item.classList.contains('bold')) {
+        item.style.display = item.textContent.toLowerCase().includes(term)
+          ? ''
+          : 'none';
+      }
     });
   }, 150),
 
@@ -2021,6 +2061,69 @@ const Search = {
     }
   },
 
+  bindHistoryNav() {
+    window.addEventListener('popstate', event => {
+      const params = new URLSearchParams(window.location.search);
+      const videoId = params.get('data');
+      const channelParam = params.get('channel');
+
+      const channelMap = Config.channels.reduce((acc, ch) => {
+        acc[ch.id] = ch;
+        return acc;
+      }, {});
+
+      if (videoId === 'rankings') {
+        const channel =
+          channelParam && channelMap[channelParam]
+            ? channelMap[channelParam]
+            : Config.channels[0];
+        const input = Dom.get('searchInput');
+        if (input) input.value = 'Top Video Rankings';
+        Loader.loadChannel(
+          channel.id,
+          channel.avatar,
+          channel.id,
+          true,
+          false,
+          true
+        );
+      } else if (videoId === 'gains') {
+        const channel =
+          channelParam && channelMap[channelParam]
+            ? channelMap[channelParam]
+            : Config.channels[0];
+        const input = Dom.get('searchInput');
+        if (input) input.value = 'Top Video Gains';
+        Loader.loadChannel(
+          channel.id,
+          channel.avatar,
+          channel.id,
+          false,
+          true,
+          true
+        );
+      } else if (channelMap[videoId]) {
+        const channel = channelMap[videoId];
+        const input = Dom.get('searchInput');
+        if (input) input.value = channel.name;
+        Loader.loadChannel(
+          channel.id,
+          channel.avatar,
+          channel.id,
+          false,
+          false,
+          true
+        );
+      } else if (videoId) {
+        const actualChannel =
+          channelParam || this.getChannelForVideo(videoId) || 'mrbeast';
+        Loader.loadVideo(videoId, actualChannel, true);
+      } else {
+        this.loadDefaultVideo();
+      }
+    });
+  },
+
   bindEvents() {
     const searchInput = Dom.get('searchInput');
     const dropdown = Dom.get('dropdownList');
@@ -2067,8 +2170,16 @@ const Search = {
       if (input) input.value = 'Top Video Rankings';
       dropdown.classList.remove('show');
 
-      const defaultCh = Config.channels[0];
-      Loader.loadChannel(defaultCh.id, defaultCh.avatar, defaultCh.id, true);
+      const currentChannel = State.currentChannel || 'mrbeast';
+      const channelConfig =
+        Config.channels.find(ch => ch.id === currentChannel) ||
+        Config.channels[0];
+      Loader.loadChannel(
+        channelConfig.id,
+        channelConfig.avatar,
+        channelConfig.id,
+        true
+      );
     });
 
     const gainsOpt = Dom.create('div', 'dropdown-list-item bold');
@@ -2085,11 +2196,14 @@ const Search = {
       if (input) input.value = 'Top Video Gains';
       dropdown.classList.remove('show');
 
-      const defaultCh = Config.channels[0];
+      const currentChannel = State.currentChannel || 'mrbeast';
+      const channelConfig =
+        Config.channels.find(ch => ch.id === currentChannel) ||
+        Config.channels[0];
       Loader.loadChannel(
-        defaultCh.id,
-        defaultCh.avatar,
-        defaultCh.id,
+        channelConfig.id,
+        channelConfig.avatar,
+        channelConfig.id,
         false,
         true
       );
@@ -2103,6 +2217,9 @@ const Search = {
         const input = Dom.get('searchInput');
         if (input) input.value = channel.name;
         dropdown.classList.remove('show');
+
+        this.updateVideoList(channel.id);
+
         Loader.loadChannel(
           channel.id,
           channel.avatar,
@@ -2114,7 +2231,24 @@ const Search = {
     });
   },
 
-  addVideoOpts(videos) {
+  updateVideoList(channelId) {
+    const dropdown = Dom.get('dropdownList');
+    if (!dropdown) return;
+
+    const videoItems = dropdown.querySelectorAll(
+      '.dropdown-list-item:not(.bold)'
+    );
+    videoItems.forEach(item => item.remove());
+
+    this.currentDropdownChannel = channelId;
+    const videos = this.allVideosByChannel[channelId] || [];
+
+    if (videos.length > 0) {
+      this.addVideoOpts(videos, channelId);
+    }
+  },
+
+  addVideoOpts(videos, channelId) {
     const dropdown = Dom.get('dropdownList');
     if (!dropdown || !Array.isArray(videos)) return;
 
@@ -2124,13 +2258,15 @@ const Search = {
       const item = Dom.create('div', 'dropdown-list-item');
       item.textContent = Format.addCommasToTitle(video.title);
       item.dataset.videoId = video.videoId;
+      item.dataset.channel = channelId;
 
       item.addEventListener('click', e => {
         const selectedId = e.currentTarget.dataset.videoId;
+        const videoChannel = e.currentTarget.dataset.channel;
         const input = Dom.get('searchInput');
         if (input) input.value = e.currentTarget.textContent;
         dropdown.classList.remove('show');
-        Loader.loadVideo(selectedId, 'mrbeast');
+        Loader.loadVideo(selectedId, videoChannel);
       });
 
       fragment.appendChild(item);
@@ -2139,10 +2275,43 @@ const Search = {
     dropdown.appendChild(fragment);
   },
 
-  handleUrlParams(videos) {
+  getChannelForVideo(videoId) {
+    return this.videoChannelMap.get(videoId) || 'mrbeast';
+  },
+
+  async fetchAllVideos() {
+    try {
+      const response = await fetch(`${Config.api.baseUrl}/allvideos`);
+      if (!response.ok)
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+      const data = await response.json();
+      if (data?.channels) {
+        Object.entries(data.channels).forEach(([channel, videos]) => {
+          this.allVideosByChannel[channel] = videos;
+          videos.forEach(video => {
+            this.videoChannelMap.set(video.videoId, channel);
+          });
+        });
+
+        console.log(
+          `Loaded ${this.videoChannelMap.size} video mappings across ${
+            Object.keys(this.allVideosByChannel).length
+          } channels`
+        );
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to fetch all videos:', error);
+      return false;
+    }
+  },
+
+  handleUrlParams(hasAllVideos) {
     const params = new URLSearchParams(window.location.search);
     const videoId = params.get('data');
-    const channelParam = params.get('channel');
+    let channelParam = params.get('channel');
 
     const channelMap = Config.channels.reduce((acc, ch) => {
       acc[ch.id] = ch;
@@ -2156,7 +2325,19 @@ const Search = {
           : Config.channels[0];
       const input = Dom.get('searchInput');
       if (input) input.value = 'Top Video Rankings';
-      Loader.loadChannel(channel.id, channel.avatar, channel.id, true, false);
+
+      if (hasAllVideos) {
+        this.updateVideoList(channel.id);
+      }
+
+      Loader.loadChannel(
+        channel.id,
+        channel.avatar,
+        channel.id,
+        true,
+        false,
+        true
+      );
     } else if (videoId === 'gains') {
       const channel =
         channelParam && channelMap[channelParam]
@@ -2164,75 +2345,144 @@ const Search = {
           : Config.channels[0];
       const input = Dom.get('searchInput');
       if (input) input.value = 'Top Video Gains';
-      Loader.loadChannel(channel.id, channel.avatar, channel.id, false, true);
+
+      if (hasAllVideos) {
+        this.updateVideoList(channel.id);
+      }
+
+      Loader.loadChannel(
+        channel.id,
+        channel.avatar,
+        channel.id,
+        false,
+        true,
+        true
+      );
     } else if (channelMap[videoId]) {
       const channel = channelMap[videoId];
       const input = Dom.get('searchInput');
       if (input) input.value = channel.name;
-      Loader.loadChannel(channel.id, channel.avatar, channel.id, false, false);
-    } else if (videoId && Array.isArray(videos)) {
-      const matching = videos.find(v => v.videoId === videoId);
-      if (matching) {
-        const input = Dom.get('searchInput');
-        if (input) input.value = Format.addCommasToTitle(matching.title);
-        Loader.loadVideo(matching.videoId, 'mrbeast');
-      } else {
-        this.loadDefaultGains();
+
+      if (hasAllVideos) {
+        this.updateVideoList(channel.id);
       }
-    } else if (Array.isArray(videos) && videos.length > 0) {
-      this.loadDefaultVideo(videos);
+
+      Loader.loadChannel(
+        channel.id,
+        channel.avatar,
+        channel.id,
+        false,
+        false,
+        true
+      );
+    } else if (videoId) {
+      if (!channelParam && hasAllVideos) {
+        channelParam = this.getChannelForVideo(videoId);
+      }
+
+      const actualChannel = channelParam || 'mrbeast';
+
+      if (hasAllVideos) {
+        this.updateVideoList(actualChannel);
+      }
+
+      this.fetchVideoTitle(videoId, actualChannel).then(() => {
+        Loader.loadVideo(videoId, actualChannel, true);
+      });
     } else {
-      this.loadDefaultGains();
+      this.loadDefaultVideo();
     }
   },
 
-  loadDefaultVideo(videos) {
-    const recent = videos.sort(
-      (a, b) => new Date(b.uploadTime) - new Date(a.uploadTime)
-    )[0];
-    const input = Dom.get('searchInput');
-    if (input) input.value = Format.addCommasToTitle(recent.title);
-    Loader.loadVideo(recent.videoId, 'mrbeast');
+  async fetchVideoTitle(videoId, channel) {
+    try {
+      let endpoint = Config.api.videoStats.byChannel(channel, videoId);
+      let response = await fetch(endpoint);
+
+      if (!response.ok) {
+        endpoint = Config.api.videoStats.base + videoId;
+        response = await fetch(endpoint);
+      }
+
+      if (response.ok) {
+        const video = await response.json();
+        const input = Dom.get('searchInput');
+        if (input && video.title) {
+          input.value = Format.addCommasToTitle(video.title);
+        }
+      }
+    } catch (error) {}
+  },
+
+  async loadDefaultVideo() {
+    try {
+      const response = await fetch(Config.api.videos.byChannel('mrbeast'));
+      if (!response.ok) throw new Error('Failed to fetch videos');
+
+      const data = await response.json();
+      if (
+        !data.videos ||
+        !Array.isArray(data.videos) ||
+        data.videos.length === 0
+      ) {
+        this.loadDefaultGains();
+        return;
+      }
+
+      const recent = data.videos.sort(
+        (a, b) => new Date(b.uploadTime) - new Date(a.uploadTime)
+      )[0];
+      const input = Dom.get('searchInput');
+      if (input) input.value = Format.addCommasToTitle(recent.title);
+      Loader.loadVideo(recent.videoId, 'mrbeast', false);
+    } catch (error) {
+      console.error('Failed to load default video:', error);
+      this.loadDefaultGains();
+    }
   },
 
   loadDefaultGains() {
     const defaultCh = Config.channels[0];
     const input = Dom.get('searchInput');
     if (input) input.value = 'Top Video Gains';
+
+    this.updateVideoList(defaultCh.id);
+
     Loader.loadChannel(
       defaultCh.id,
       defaultCh.avatar,
       defaultCh.id,
       false,
+      true,
       true
     );
   },
 
-  async fetchInitialVideos() {
-    try {
-      const response = await fetch(Config.api.videos.all);
-      if (!response.ok)
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
-      const data = await response.json();
-      if (data?.videos) {
-        this.addVideoOpts(data.videos);
-        this.handleUrlParams(data.videos);
-      } else {
-        this.loadDefaultGains();
-      }
-    } catch (error) {
-      this.loadDefaultGains();
-    }
-  },
-
-  init() {
+  async init() {
     this.bindEvents();
     this.createChannelOpts();
+    this.bindHistoryNav();
+
     if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => this.fetchInitialVideos());
+      requestIdleCallback(async () => {
+        const hasAllVideos = await this.fetchAllVideos();
+
+        if (hasAllVideos) {
+          this.updateVideoList('mrbeast');
+        }
+
+        this.handleUrlParams(hasAllVideos);
+      });
     } else {
-      setTimeout(() => this.fetchInitialVideos(), 100);
+      setTimeout(async () => {
+        const hasAllVideos = await this.fetchAllVideos();
+
+        if (hasAllVideos) {
+          this.updateVideoList('mrbeast');
+        }
+
+        this.handleUrlParams(hasAllVideos);
+      }, 100);
     }
   },
 };
@@ -2310,7 +2560,8 @@ const Loader = {
     profileUrl,
     _,
     showRankings = false,
-    showGains = false
+    showGains = false,
+    isNavigation = false
   ) {
     State.reset();
     HourlyMode.reset();
@@ -2319,6 +2570,10 @@ const Loader = {
     State.currentChannel = channelId;
     State.isRankingsView = showRankings;
     State.isGainsView = showGains;
+
+    if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    Search.updateVideoList(channelId);
 
     const headerTitle = document.querySelector('header h1');
     if (headerTitle) {
@@ -2335,7 +2590,9 @@ const Loader = {
     await this.setupProfile(profileUrl);
 
     if (showRankings) {
-      Dom.updateUrl('rankings', channelId);
+      if (!isNavigation) {
+        Dom.updateUrl('rankings', channelId);
+      }
       Dom.setView('rankings');
       const exportBtn = Dom.get('exportButton');
       if (exportBtn) exportBtn.style.display = 'none';
@@ -2346,8 +2603,18 @@ const Loader = {
           '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading rankings...</div>';
       }
 
+      document.querySelectorAll('.rankings-filter-button').forEach(btn => {
+        btn.classList.toggle(
+          'active',
+          btn.dataset.filter === State.rankingsSettings.filter
+        );
+      });
+
       try {
-        const rankings = await Rankings.fetch(channelId);
+        const rankings = await Rankings.fetch(
+          channelId,
+          State.rankingsSettings.filter
+        );
 
         if (rankings.length > 0) {
           const defaults = Rankings.getDefaults(rankings);
@@ -2375,11 +2642,13 @@ const Loader = {
       } catch (error) {
         if (list) {
           list.innerHTML =
-            '<div style="text-align:center;padding:40px;color:red;">Error loading rankings. Please try again.</div>';
+            '<div style="text-align:center;padding:20px;color:red;">Error loading rankings. Please try again.</div>';
         }
       }
     } else if (showGains) {
-      Dom.updateUrl('gains', channelId);
+      if (!isNavigation) {
+        Dom.updateUrl('gains', channelId);
+      }
       Dom.setView('gains');
       const exportBtn = Dom.get('exportButton');
       if (exportBtn) exportBtn.style.display = 'none';
@@ -2436,11 +2705,13 @@ const Loader = {
       } catch (error) {
         if (list) {
           list.innerHTML =
-            '<div style="text-align:center;padding:40px;color:red;">Error loading gains. Please try again.</div>';
+            '<div style="text-align:center;padding:20px;color:red;">Error loading gains. Please try again.</div>';
         }
       }
     } else {
-      Dom.updateUrl(channelId);
+      if (!isNavigation) {
+        Dom.updateUrl(channelId);
+      }
       Dom.setView('video');
       Dom.hide('videoInfoCard');
       const exportBtn = Dom.get('exportButton');
@@ -2492,14 +2763,25 @@ const Loader = {
     }
   },
 
-  async loadVideo(videoId, channelId = 'mrbeast') {
+  async loadVideo(videoId, channelId = 'mrbeast', isNavigation = false) {
     State.reset();
     HourlyMode.reset();
     State.currentEntityId = videoId;
     State.currentChannel = channelId;
     State.isRankingsView = false;
     State.isGainsView = false;
-    Dom.updateUrl(videoId, channelId);
+
+    if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    Search.updateVideoList(channelId);
+
+    if (!isNavigation) {
+      if (channelId !== 'mrbeast') {
+        Dom.updateUrl(videoId, channelId);
+      } else {
+        Dom.updateUrl(videoId);
+      }
+    }
 
     Dom.setView('video');
     const exportBtn = Dom.get('exportButton');
@@ -2547,13 +2829,7 @@ const Loader = {
         this.updateVideoInfo(video);
 
         const filtered = video.stats.filter(
-          stat =>
-            stat.views != null &&
-            stat.views !== 0 &&
-            stat.likes != null &&
-            stat.likes !== 0 &&
-            stat.comments != null &&
-            stat.comments !== 0
+          stat => stat.views != null && stat.likes != null
         );
 
         State.rawData = filtered;

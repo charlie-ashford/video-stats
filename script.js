@@ -1023,14 +1023,6 @@ const Charts = {
         } Gains`
       : seriesConfig[State.selectedMetricIndex]?.name || 'Chart';
 
-    const legendItemCount = isHourly ? seriesConfig.length : 0;
-    const legendHeight = isHourly
-      ? Math.min(Math.ceil(legendItemCount / 3) * 25, 75)
-      : 0;
-    const chartHeight = isHourly
-      ? State.getChartHeight() + 80 + legendHeight
-      : State.getChartHeight();
-
     State.chart = Highcharts.chart('videoChart', {
       chart: {
         type: isHourly ? 'line' : 'area',
@@ -1057,13 +1049,12 @@ const Charts = {
             }
           },
         },
-        height: chartHeight,
+        height: State.getChartHeight(),
         spacingBottom: State.isMobile() ? 15 : 30,
         spacingTop: State.isMobile() ? 10 : 25,
         spacingLeft: State.isMobile() ? 10 : 25,
         spacingRight: State.isMobile() ? 10 : 25,
         borderRadius: 12,
-        marginBottom: isHourly ? 80 + legendHeight : 100,
       },
       boost: { enabled: false },
       title: {
@@ -1094,9 +1085,9 @@ const Charts = {
         align: 'center',
         verticalAlign: 'bottom',
         layout: 'horizontal',
-        y: 0,
+        y: 15,
         floating: false,
-        maxHeight: legendHeight,
+        maxHeight: 60,
         navigation: {
           enabled: true,
           style: {
@@ -1184,30 +1175,26 @@ const Charts = {
             condition: { maxWidth: 480 },
             chartOptions: {
               chart: {
-                height: isHourly ? 360 + legendHeight : 280,
                 spacingBottom: 15,
                 spacingTop: 10,
                 spacingLeft: 10,
                 spacingRight: 10,
-                marginBottom: isHourly ? 60 + legendHeight : 60,
               },
               title: { style: { fontSize: '16px' }, margin: 15 },
               legend: {
                 itemStyle: { fontSize: '10px' },
                 itemDistance: 8,
+                y: 10,
               },
             },
           },
           {
             condition: { maxWidth: 768 },
             chartOptions: {
-              chart: {
-                height: isHourly ? 430 + legendHeight : 350,
-                marginBottom: isHourly ? 70 + legendHeight : 70,
-              },
               legend: {
                 itemStyle: { fontSize: '11px' },
                 itemDistance: 12,
+                y: 12,
               },
             },
           },

@@ -917,11 +917,9 @@ const ChartBuilder = {
           });
           const date = dt.toFormat('yyyy-MM-dd');
           const time = dt.toFormat('HH:mm:ss');
-          let tooltip = `<b>${date} ${time} EST</b><br>`;
+          let tooltip = `<b>${date} ${time}</b><br>`;
           for (const point of this.points) {
-            const value = State.isMobile()
-              ? Format.compact(point.y)
-              : point.y.toLocaleString();
+            const value = point.y.toLocaleString();
             tooltip += `${point.series.name}: ${value}<br>`;
           }
           return tooltip;

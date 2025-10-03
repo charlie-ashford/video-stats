@@ -978,6 +978,15 @@ const Charts = {
     const textColor = Dom.getCssVar('--text-color');
     const isHourly = State.isHourlyMode;
 
+    const chartContainer = document.querySelector('.chart-container');
+    if (chartContainer) {
+      if (isHourly) {
+        chartContainer.classList.add('hourly-mode');
+      } else {
+        chartContainer.classList.remove('hourly-mode');
+      }
+    }
+
     let seriesConfig, yRange;
 
     if (isHourly) {
@@ -1047,7 +1056,7 @@ const Charts = {
             }
           },
         },
-        height: State.getChartHeight(),
+        height: State.getChartHeight() + (isHourly ? 120 : 0),
         spacingBottom: State.isMobile() ? 15 : 30,
         spacingTop: State.isMobile() ? 10 : 25,
         spacingLeft: State.isMobile() ? 10 : 25,

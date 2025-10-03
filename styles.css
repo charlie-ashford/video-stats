@@ -438,6 +438,10 @@ header h1 {
   overflow: hidden;
 }
 
+.chart-container.hourly-mode {
+  min-height: calc(var(--chart-height, 400px) + 120px);
+}
+
 #videoChart {
   width: 100%;
   display: block;

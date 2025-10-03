@@ -91,7 +91,7 @@ const Config = {
   },
   rankings: {
     defaultCount: 10,
-    maxCount: 25,
+    maxCount: 50,
     defaultHours: 24,
     maxHours: 168,
     defaultFilter: 'long',
@@ -1489,7 +1489,7 @@ const Rankings = {
 
     const recent = withData
       .sort((a, b) => new Date(b.uploadTime) - new Date(a.uploadTime))
-      .slice(0, Math.min(videoCount, 25));
+      .slice(0, Math.min(videoCount, 50));
 
     return recent.sort((a, b) => b.viewsAtPeriod - a.viewsAtPeriod);
   },

@@ -109,6 +109,57 @@ const Config = {
   },
 };
 
+const SessionSettings = {
+  setRankingsSettings(settings) {
+    try {
+      sessionStorage.setItem('rankingsSettings', JSON.stringify(settings));
+    } catch (error) {
+      console.warn('Failed to save rankings settings:', error);
+    }
+  },
+
+  getRankingsSettings() {
+    try {
+      const stored = sessionStorage.getItem('rankingsSettings');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.warn('Failed to load rankings settings:', error);
+    }
+    return null;
+  },
+
+  setGainsSettings(settings) {
+    try {
+      sessionStorage.setItem('gainsSettings', JSON.stringify(settings));
+    } catch (error) {
+      console.warn('Failed to save gains settings:', error);
+    }
+  },
+
+  getGainsSettings() {
+    try {
+      const stored = sessionStorage.getItem('gainsSettings');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.warn('Failed to load gains settings:', error);
+    }
+    return null;
+  },
+
+  clear() {
+    try {
+      sessionStorage.removeItem('rankingsSettings');
+      sessionStorage.removeItem('gainsSettings');
+    } catch (error) {
+      console.warn('Failed to clear settings:', error);
+    }
+  },
+};
+
 const State = {
   chart: null,
   rawData: {},
@@ -140,6 +191,27 @@ const State = {
   cachedRankings: new Map(),
   cachedGains: new Map(),
   lastFetchTime: 0,
+
+  loadSettings() {
+    const savedRankings = SessionSettings.getRankingsSettings();
+    if (savedRankings) {
+      this.rankingsSettings = { ...this.rankingsSettings, ...savedRankings };
+    }
+
+    const savedGains = SessionSettings.getGainsSettings();
+    if (savedGains) {
+      this.gainsSettings = { ...this.gainsSettings, ...savedGains };
+    }
+  },
+
+  saveSettings() {
+    if (this.isRankingsView) {
+      SessionSettings.setRankingsSettings(this.rankingsSettings);
+    }
+    if (this.isGainsView) {
+      SessionSettings.setGainsSettings(this.gainsSettings);
+    }
+  },
 
   getBreakpoint() {
     const w = window.innerWidth || 1024;
@@ -1629,6 +1701,8 @@ const Rankings = {
           if (countValue)
             countValue.textContent = State.rankingsSettings.videoCount;
 
+          State.saveSettings();
+
           clearTimeout(this.updateTimeouts.get('videoCount'));
           this.updateTimeouts.set(
             'videoCount',
@@ -1647,6 +1721,8 @@ const Rankings = {
           State.rankingsSettings.timePeriod = parseInt(e.target.value);
           if (periodValue)
             periodValue.textContent = State.rankingsSettings.timePeriod;
+
+          State.saveSettings();
 
           clearTimeout(this.updateTimeouts.get('timePeriod'));
           this.updateTimeouts.set(
@@ -1671,8 +1747,31 @@ const Rankings = {
         btn.classList.add('active');
 
         State.rankingsSettings.filter = filter;
+
+        State.saveSettings();
+
         this.updateInstant();
       });
+    });
+  },
+
+  applySettings() {
+    const countSlider = Dom.get('videoCountSlider');
+    const countValue = Dom.get('videoCountValue');
+    const periodSlider = Dom.get('timePeriodSlider');
+    const periodValue = Dom.get('timePeriodValue');
+
+    if (countSlider) countSlider.value = State.rankingsSettings.videoCount;
+    if (countValue) countValue.textContent = State.rankingsSettings.videoCount;
+    if (periodSlider) periodSlider.value = State.rankingsSettings.timePeriod;
+    if (periodValue)
+      periodValue.textContent = State.rankingsSettings.timePeriod;
+
+    document.querySelectorAll('.rankings-filter-button').forEach(btn => {
+      btn.classList.toggle(
+        'active',
+        btn.dataset.filter === State.rankingsSettings.filter
+      );
     });
   },
 
@@ -1898,12 +1997,15 @@ const Gains = {
 
         if (group === 'period') {
           State.gainsSettings.period = parseInt(btn.dataset.period);
+          State.saveSettings();
           this.updateInstant(true);
         } else if (group === 'filter') {
           State.gainsSettings.filter = btn.dataset.filter;
+          State.saveSettings();
           this.updateInstant(true);
         } else if (group === 'metric') {
           State.gainsSettings.metric = btn.dataset.metric;
+          State.saveSettings();
           this.updateInstant(true);
         }
       });
@@ -1925,12 +2027,49 @@ const Gains = {
           State.gainsSettings.count = parseInt(e.target.value);
           if (countValue) countValue.textContent = State.gainsSettings.count;
 
+          State.saveSettings();
+
           clearTimeout(this.updateTimeout);
           this.updateTimeout = setTimeout(() => this.updateInstant(false), 50);
         },
         { passive: true }
       );
     }
+  },
+
+  applySettings() {
+    const countSlider = Dom.get('gainsCountSlider');
+    const countValue = Dom.get('gainsCountValue');
+
+    if (countSlider) countSlider.value = State.gainsSettings.count;
+    if (countValue) countValue.textContent = State.gainsSettings.count;
+
+    document
+      .querySelectorAll('.control-button[data-group="period"]')
+      .forEach(btn => {
+        btn.classList.toggle(
+          'active',
+          parseInt(btn.dataset.period) === State.gainsSettings.period
+        );
+      });
+
+    document
+      .querySelectorAll('.control-button[data-group="filter"]')
+      .forEach(btn => {
+        btn.classList.toggle(
+          'active',
+          btn.dataset.filter === State.gainsSettings.filter
+        );
+      });
+
+    document
+      .querySelectorAll('.control-button[data-group="metric"]')
+      .forEach(btn => {
+        btn.classList.toggle(
+          'active',
+          btn.dataset.metric === State.gainsSettings.metric
+        );
+      });
   },
 
   init() {
@@ -2630,7 +2769,7 @@ const Search = {
         });
 
         console.log(
-          `Loaded ${this.videoChannelMap.size} video mappings across ${
+          `Loaded ${this.videoChannelMap.size} videos across ${
             Object.keys(this.allVideosByChannel).length
           } channels`
         );
@@ -2906,6 +3045,8 @@ const Loader = {
     State.isRankingsView = showRankings;
     State.isGainsView = showGains;
 
+    State.loadSettings();
+
     if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
 
     Search.updateVideoList(channelId);
@@ -2938,12 +3079,7 @@ const Loader = {
           '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading rankings...</div>';
       }
 
-      document.querySelectorAll('.rankings-filter-button').forEach(btn => {
-        btn.classList.toggle(
-          'active',
-          btn.dataset.filter === State.rankingsSettings.filter
-        );
-      });
+      Rankings.applySettings();
 
       try {
         const rankings = await Rankings.fetch(
@@ -2952,22 +3088,15 @@ const Loader = {
         );
 
         if (rankings.length > 0) {
-          const defaults = Rankings.getDefaults(rankings);
+          const savedSettings = SessionSettings.getRankingsSettings();
+          if (!savedSettings) {
+            const defaults = Rankings.getDefaults(rankings);
+            State.rankingsSettings.videoCount = defaults.videoCount;
+            State.rankingsSettings.timePeriod = defaults.timePeriod;
+            Rankings.applySettings();
+          }
 
-          State.rankingsSettings.videoCount = defaults.videoCount;
-          State.rankingsSettings.timePeriod = defaults.timePeriod;
-
-          const countSlider = Dom.get('videoCountSlider');
-          const countValue = Dom.get('videoCountValue');
-          const periodSlider = Dom.get('timePeriodSlider');
-          const periodValue = Dom.get('timePeriodValue');
-
-          if (countSlider) countSlider.value = defaults.videoCount;
-          if (countValue) countValue.textContent = defaults.videoCount;
-          if (periodSlider) periodSlider.value = defaults.timePeriod;
-          if (periodValue) periodValue.textContent = defaults.timePeriod;
-
-          Rankings.display(rankings, defaults);
+          Rankings.display(rankings);
         } else {
           if (list) {
             list.innerHTML =
@@ -2994,37 +3123,7 @@ const Loader = {
           '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading gains...</div>';
       }
 
-      const countSlider = Dom.get('gainsCountSlider');
-      const countValue = Dom.get('gainsCountValue');
-
-      if (countSlider) countSlider.value = State.gainsSettings.count;
-      if (countValue) countValue.textContent = State.gainsSettings.count;
-      document
-        .querySelectorAll('.control-button[data-group="period"]')
-        .forEach(btn => {
-          btn.classList.toggle(
-            'active',
-            parseInt(btn.dataset.period) === State.gainsSettings.period
-          );
-        });
-
-      document
-        .querySelectorAll('.control-button[data-group="filter"]')
-        .forEach(btn => {
-          btn.classList.toggle(
-            'active',
-            btn.dataset.filter === State.gainsSettings.filter
-          );
-        });
-
-      document
-        .querySelectorAll('.control-button[data-group="metric"]')
-        .forEach(btn => {
-          btn.classList.toggle(
-            'active',
-            btn.dataset.metric === State.gainsSettings.metric
-          );
-        });
+      Gains.applySettings();
 
       try {
         const gains = await Gains.fetch(
@@ -3343,6 +3442,9 @@ const App = {
     try {
       this.checkDeps();
       Theme.init();
+
+      State.loadSettings();
+
       Search.init();
       Export.init();
       Layout.bindEvents();

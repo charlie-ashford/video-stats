@@ -95,6 +95,7 @@ const Config = {
     defaultHours: 24,
     maxHours: 168,
     defaultFilter: 'long',
+    defaultMetric: 'views',
   },
   gains: {
     defaultPeriod: 1,
@@ -181,6 +182,7 @@ const State = {
     videoCount: Config.rankings.defaultCount,
     timePeriod: Config.rankings.defaultHours,
     filter: Config.rankings.defaultFilter,
+    metric: Config.rankings.defaultMetric,
   },
   gainsSettings: {
     period: Config.gains.defaultPeriod,
@@ -1508,6 +1510,7 @@ const Rankings = {
       State.lastFetchTime = currentTime;
       return data.videos;
     } catch (error) {
+      console.error('Rankings fetch error:', error);
       return State.cachedRankings.get(cacheKey) || [];
     }
   },
@@ -1519,15 +1522,30 @@ const Rankings = {
     return Math.floor(Math.max(0, diffHours));
   },
 
-  getDefaults(videos) {
+  getDefaults(videos, currentFilter = 'long') {
     if (!videos || videos.length === 0) {
       return { videoCount: 10, timePeriod: 24, highlightNewest: false };
     }
 
-    const newest = videos[0];
+    let filteredVideos = videos;
+    if (currentFilter !== 'all') {
+      const isShort = currentFilter === 'short';
+      filteredVideos = videos.filter(v => {
+        return isShort ? v.isShort === true : v.isShort === false;
+      });
+    }
+
+    if (filteredVideos.length === 0) {
+      filteredVideos = videos;
+    }
+
+    const newest = filteredVideos.sort(
+      (a, b) => new Date(b.uploadTime) - new Date(a.uploadTime)
+    )[0];
     const ageInHours = this.calcAge(newest.uploadTime);
+
     const hasData =
-      newest.periodData && newest.periodData[ageInHours.toString()] > 0;
+      newest.periodData && newest.periodData[`views_${ageInHours}`] > 0;
 
     let smartTimePeriod,
       highlightNewest = false;
@@ -1547,23 +1565,26 @@ const Rankings = {
     };
   },
 
-  processVideos(videos, timePeriod, videoCount) {
+  processVideos(videos, timePeriod, videoCount, metric = 'views') {
     if (!videos || !Array.isArray(videos)) return [];
 
+    const metricKey = `${metric}_${timePeriod}`;
+
     const withData = videos
-      .filter(
-        v =>
-          v.periodData &&
-          v.periodData[timePeriod.toString()] &&
-          v.periodData[timePeriod.toString()] > 0
-      )
-      .map(v => ({ ...v, viewsAtPeriod: v.periodData[timePeriod.toString()] }));
+      .filter(v => {
+        const data = v.periodData && v.periodData[metricKey];
+        return data && data > 0;
+      })
+      .map(v => ({
+        ...v,
+        metricAtPeriod: v.periodData[metricKey],
+      }));
 
     const recent = withData
       .sort((a, b) => new Date(b.uploadTime) - new Date(a.uploadTime))
       .slice(0, Math.min(videoCount, 50));
 
-    return recent.sort((a, b) => b.viewsAtPeriod - a.viewsAtPeriod);
+    return recent.sort((a, b) => b.metricAtPeriod - a.metricAtPeriod);
   },
 
   display(videos) {
@@ -1581,7 +1602,8 @@ const Rankings = {
     const ranked = this.processVideos(
       videos,
       State.rankingsSettings.timePeriod,
-      State.rankingsSettings.videoCount
+      State.rankingsSettings.videoCount,
+      State.rankingsSettings.metric
     );
 
     if (ranked.length === 0) {
@@ -1605,11 +1627,14 @@ const Rankings = {
       const shouldHighlight = video.videoId === newest.videoId;
       if (shouldHighlight) item.classList.add('ranking-highlight');
 
-      const formattedViews = Format.addCommas(video.viewsAtPeriod);
+      const formattedMetric = Format.addCommas(video.metricAtPeriod);
       const periodUnit = Format.pluralize(
         State.rankingsSettings.timePeriod,
         'hour'
       );
+      const metricName =
+        State.rankingsSettings.metric.charAt(0).toUpperCase() +
+        State.rankingsSettings.metric.slice(1);
 
       item.innerHTML = `
         <div class="ranking-position">${index + 1}</div>
@@ -1623,7 +1648,7 @@ const Rankings = {
           )}</div>
         </div>
         <div class="ranking-views">
-          ${formattedViews}
+          ${formattedMetric}
           <span class="ranking-time">in ${
             State.rankingsSettings.timePeriod
           } ${periodUnit}</span>
@@ -1652,14 +1677,11 @@ const Rankings = {
       if (hours < 24) {
         return `${hours} ${Format.pluralize(hours, 'Hour')}`;
       }
-
       const days = Math.floor(hours / 24);
       const remainingHours = hours % 24;
-
       if (remainingHours === 0) {
         return `${days} ${Format.pluralize(days, 'Day')}`;
       }
-
       return `${days} ${Format.pluralize(
         days,
         'Day'
@@ -1667,13 +1689,27 @@ const Rankings = {
     };
 
     if (subtitle) {
-      subtitle.textContent = `Views in First ${formatTimePeriod(
+      const metricName =
+        State.rankingsSettings.metric.charAt(0).toUpperCase() +
+        State.rankingsSettings.metric.slice(1);
+      subtitle.textContent = `${metricName} in First ${formatTimePeriod(
         State.rankingsSettings.timePeriod
       )}`;
     }
   },
 
   updateInstant() {
+    if (!State.isRankingsView || !State.currentChannel) return;
+
+    const cacheKey = `${State.currentChannel}-${State.rankingsSettings.filter}`;
+    const cached = State.cachedRankings.get(cacheKey);
+
+    if (cached) {
+      this.display(cached);
+    }
+  },
+
+  async updateWithFetch() {
     if (!State.isRankingsView || !State.currentChannel) return;
 
     const list = Dom.get('rankingsList');
@@ -1686,16 +1722,20 @@ const Rankings = {
     const cached = State.cachedRankings.get(cacheKey);
     if (cached) this.display(cached);
 
-    this.fetch(State.currentChannel, State.rankingsSettings.filter)
-      .then(videos => {
-        if (State.isRankingsView) this.display(videos);
-      })
-      .catch(error => {
-        if (list && !cached) {
-          list.innerHTML =
-            '<div style="text-align:center;padding:20px;color:red;">Error loading rankings. Please try again.</div>';
-        }
-      });
+    try {
+      const videos = await this.fetch(
+        State.currentChannel,
+        State.rankingsSettings.filter
+      );
+      if (State.isRankingsView) {
+        this.display(videos);
+      }
+    } catch (error) {
+      if (list && !cached) {
+        list.innerHTML =
+          '<div style="text-align:center;padding:20px;color:red;">Error loading rankings. Please try again.</div>';
+      }
+    }
   },
 
   bindSliders() {
@@ -1722,7 +1762,7 @@ const Rankings = {
           clearTimeout(this.updateTimeouts.get('videoCount'));
           this.updateTimeouts.set(
             'videoCount',
-            setTimeout(() => this.updateInstant(), 200)
+            setTimeout(() => this.updateInstant(), 50)
           );
         },
         { passive: true }
@@ -1743,7 +1783,7 @@ const Rankings = {
           clearTimeout(this.updateTimeouts.get('timePeriod'));
           this.updateTimeouts.set(
             'timePeriod',
-            setTimeout(() => this.updateInstant(), 200)
+            setTimeout(() => this.updateInstant(), 50)
           );
         },
         { passive: true }
@@ -1763,12 +1803,59 @@ const Rankings = {
         btn.classList.add('active');
 
         State.rankingsSettings.filter = filter;
+        State.saveSettings();
 
+        this.updateSmartHours();
+        this.updateWithFetch();
+      });
+    });
+
+    document.querySelectorAll('.rankings-metric-button').forEach(button => {
+      button.addEventListener('click', e => {
+        const btn = e.currentTarget;
+        const metric = btn.dataset.metric;
+
+        document
+          .querySelectorAll('.rankings-metric-button')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        State.rankingsSettings.metric = metric;
         State.saveSettings();
 
         this.updateInstant();
       });
     });
+  },
+
+  async updateSmartHours() {
+    if (!State.currentChannel) return;
+
+    try {
+      const videos = await this.fetch(
+        State.currentChannel,
+        State.rankingsSettings.filter
+      );
+
+      if (videos.length > 0) {
+        const defaults = this.getDefaults(
+          videos,
+          State.rankingsSettings.filter
+        );
+        State.rankingsSettings.timePeriod = defaults.timePeriod;
+
+        const periodSlider = Dom.get('timePeriodSlider');
+        const periodValue = Dom.get('timePeriodValue');
+        if (periodSlider)
+          periodSlider.value = State.rankingsSettings.timePeriod;
+        if (periodValue)
+          periodValue.textContent = State.rankingsSettings.timePeriod;
+
+        State.saveSettings();
+      }
+    } catch (error) {
+      console.error('Failed to update smart hours:', error);
+    }
   },
 
   applySettings() {
@@ -1787,6 +1874,13 @@ const Rankings = {
       btn.classList.toggle(
         'active',
         btn.dataset.filter === State.rankingsSettings.filter
+      );
+    });
+
+    document.querySelectorAll('.rankings-metric-button').forEach(btn => {
+      btn.classList.toggle(
+        'active',
+        btn.dataset.metric === State.rankingsSettings.metric
       );
     });
   },
@@ -3464,6 +3558,34 @@ const Export = {
 };
 
 const Layout = {
+  setupResponsive() {
+    const headerControls = document.querySelector('.header-controls');
+    const searchBar = document.querySelector('.search-bar');
+    const themeToggle = Dom.get('themeToggle');
+    const exportButton = Dom.get('exportButton');
+
+    if (!headerControls || !searchBar || !themeToggle || !exportButton) return;
+
+    const existing = document.querySelector('.mobile-buttons');
+    if (existing) existing.remove();
+
+    if (window.innerWidth <= Config.responsive.breakpoints.tablet) {
+      let mobileButtons = document.querySelector('.mobile-buttons');
+      if (!mobileButtons) {
+        mobileButtons = Dom.create('div', 'mobile-buttons');
+        headerControls.appendChild(mobileButtons);
+      }
+
+      mobileButtons.appendChild(themeToggle);
+      mobileButtons.appendChild(exportButton);
+      headerControls.insertBefore(searchBar, mobileButtons);
+    } else {
+      headerControls.appendChild(searchBar);
+      headerControls.appendChild(themeToggle);
+      headerControls.appendChild(exportButton);
+    }
+  },
+
   bindEvents() {
     window.addEventListener(
       'resize',

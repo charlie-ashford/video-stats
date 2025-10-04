@@ -821,6 +821,14 @@ header h1 {
   gap: 1rem;
 }
 
+.rankings-button-groups {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 1rem;
+}
+
 .ranking-item,
 .gains-item {
   display: flex;
@@ -1515,6 +1523,12 @@ footer .fa-heart {
     gap: 1.5rem;
   }
 
+  .rankings-button-groups {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
   .ranking-item,
   .gains-item {
     padding: 0.75rem;
@@ -1798,6 +1812,10 @@ footer .fa-heart {
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .rankings-button-groups {
+    gap: 0.75rem;
   }
 
   .ranking-item,

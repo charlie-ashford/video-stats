@@ -154,26 +154,47 @@
             </div>
           </div>
 
-          <div class="button-group" style="margin-top: 1rem">
-            <span class="button-group-label">Video Type:</span>
-            <button
-              class="control-button rankings-filter-button active"
-              data-filter="long"
-            >
-              Long
-            </button>
-            <button
-              class="control-button rankings-filter-button"
-              data-filter="short"
-            >
-              Shorts
-            </button>
-            <button
-              class="control-button rankings-filter-button"
-              data-filter="all"
-            >
-              All
-            </button>
+          <div
+            class="rankings-button-groups"
+            style="display: flex; gap: 2rem; margin-top: 1rem; flex-wrap: wrap"
+          >
+            <div class="button-group">
+              <span class="button-group-label">Video Type:</span>
+              <button
+                class="control-button rankings-filter-button active"
+                data-filter="long"
+              >
+                Long
+              </button>
+              <button
+                class="control-button rankings-filter-button"
+                data-filter="short"
+              >
+                Shorts
+              </button>
+              <button
+                class="control-button rankings-filter-button"
+                data-filter="all"
+              >
+                All
+              </button>
+            </div>
+
+            <div class="button-group">
+              <span class="button-group-label">Metric:</span>
+              <button
+                class="control-button rankings-metric-button active"
+                data-metric="views"
+              >
+                Views
+              </button>
+              <button
+                class="control-button rankings-metric-button"
+                data-metric="likes"
+              >
+                Likes
+              </button>
+            </div>
           </div>
         </div>
       </div>

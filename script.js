@@ -2948,10 +2948,24 @@ const Search = {
     );
   },
 
+  needsVideoData() {
+    const params = new URLSearchParams(window.location.search);
+    const videoId = params.get('data');
+
+    return (
+      videoId &&
+      videoId !== 'rankings' &&
+      videoId !== 'gains' &&
+      !Config.channels.find(ch => ch.id === videoId)
+    );
+  },
+
   async init() {
     this.bindEvents();
     this.createChannelOpts();
     this.bindHistoryNav();
+
+    this.handleUrlParams(false);
 
     if ('requestIdleCallback' in window) {
       requestIdleCallback(async () => {
@@ -2961,7 +2975,9 @@ const Search = {
           this.updateVideoList('mrbeast');
         }
 
-        this.handleUrlParams(hasAllVideos);
+        if (this.needsVideoData()) {
+          this.handleUrlParams(hasAllVideos);
+        }
       });
     } else {
       setTimeout(async () => {
@@ -2971,7 +2987,9 @@ const Search = {
           this.updateVideoList('mrbeast');
         }
 
-        this.handleUrlParams(hasAllVideos);
+        if (this.needsVideoData()) {
+          this.handleUrlParams(hasAllVideos);
+        }
       }, 100);
     }
   },

@@ -2430,6 +2430,8 @@ const Theme = {
         const current = document.body.getAttribute('data-theme');
         const newTheme = current === 'light' ? 'dark' : 'light';
 
+        document.documentElement.classList.add('no-transitions');
+
         document.documentElement.setAttribute('data-theme', newTheme);
         document.body.setAttribute('data-theme', newTheme);
         localStorage.setItem('theme', newTheme);
@@ -2439,6 +2441,7 @@ const Theme = {
           setTimeout(() => {
             const newCardBg = Dom.getCssVar('--card-background-color');
             const newBorderColor = Dom.getCssVar('--border-color');
+            const newTextColor = Dom.getCssVar('--text-color');
 
             State.chart.update(
               {
@@ -2446,6 +2449,29 @@ const Theme = {
                   backgroundColor: newCardBg,
                   plotBackgroundColor: newCardBg,
                   plotBorderColor: newBorderColor,
+                  animation: false,
+                },
+                title: {
+                  style: { color: newTextColor },
+                },
+                xAxis: {
+                  title: { style: { color: newTextColor } },
+                  labels: { style: { color: newTextColor } },
+                  gridLineColor: newBorderColor,
+                  lineColor: newBorderColor,
+                  tickColor: newBorderColor,
+                  minorGridLineColor: newBorderColor,
+                },
+                yAxis: {
+                  title: { style: { color: newTextColor } },
+                  labels: { style: { color: newTextColor } },
+                  gridLineColor: newBorderColor,
+                  lineColor: newBorderColor,
+                  tickColor: newBorderColor,
+                  minorGridLineColor: newBorderColor,
+                },
+                legend: {
+                  itemStyle: { color: newTextColor },
                 },
               },
               true
@@ -2453,7 +2479,9 @@ const Theme = {
           }, 10);
         }
 
-        Charts.redraw();
+        setTimeout(() => {
+          document.documentElement.classList.remove('no-transitions');
+        }, 100);
       });
     }
   },
@@ -2866,6 +2894,12 @@ const Search = {
         true
       );
     } else if (videoId) {
+      const container = Dom.get('videoChart');
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:40px;">Loading video data...</div>';
+      }
+
       if (!channelParam && hasAllVideos) {
         channelParam = this.getChannelForVideo(videoId);
       }
@@ -3430,40 +3464,45 @@ const Export = {
 };
 
 const Layout = {
-  setupResponsive() {
-    const headerControls = document.querySelector('.header-controls');
-    const searchBar = document.querySelector('.search-bar');
-    const themeToggle = Dom.get('themeToggle');
-    const exportButton = Dom.get('exportButton');
-
-    if (!headerControls || !searchBar || !themeToggle || !exportButton) return;
-
-    const existing = document.querySelector('.mobile-buttons');
-    if (existing) existing.remove();
-
-    if (window.innerWidth <= Config.responsive.breakpoints.tablet) {
-      let mobileButtons = document.querySelector('.mobile-buttons');
-      if (!mobileButtons) {
-        mobileButtons = Dom.create('div', 'mobile-buttons');
-        headerControls.appendChild(mobileButtons);
-      }
-
-      mobileButtons.appendChild(themeToggle);
-      mobileButtons.appendChild(exportButton);
-      headerControls.insertBefore(searchBar, mobileButtons);
-    } else {
-      headerControls.appendChild(searchBar);
-      headerControls.appendChild(themeToggle);
-      headerControls.appendChild(exportButton);
-    }
-  },
-
   bindEvents() {
     window.addEventListener(
       'resize',
       Dom.debounce(() => {
         this.setupResponsive();
-        if (State.chart && State.isChartReady) Charts.redraw();
+
+        if (State.chart && State.isChartReady) {
+          const originalAnimation = State.chart.options.chart.animation;
+
+          State.chart.update(
+            {
+              chart: { animation: false },
+              plotOptions: {
+                series: { animation: false },
+              },
+            },
+            false
+          );
+
+          Charts.redraw();
+
+          setTimeout(() => {
+            if (State.chart) {
+              State.chart.update(
+                {
+                  chart: { animation: originalAnimation },
+                  plotOptions: {
+                    series: {
+                      animation: State.isMobile()
+                        ? false
+                        : { duration: 400, easing: 'easeOutQuart' },
+                    },
+                  },
+                },
+                false
+              );
+            }
+          }, 100);
+        }
       }, 250)
     );
 

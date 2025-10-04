@@ -1532,7 +1532,7 @@ const Rankings = {
     let smartTimePeriod,
       highlightNewest = false;
 
-    if (ageInHours > 0 && ageInHours < 24 && hasData) {
+    if (ageInHours > 0 && ageInHours < 168 && hasData) {
       smartTimePeriod = ageInHours;
       highlightNewest = true;
     } else {

@@ -1648,12 +1648,28 @@ const Rankings = {
     }
 
     const subtitle = document.querySelector('.rankings-subtitle');
-    const periodUnit = Format.pluralize(
-      State.rankingsSettings.timePeriod,
-      'Hour'
-    );
+    const formatTimePeriod = hours => {
+      if (hours < 24) {
+        return `${hours} ${Format.pluralize(hours, 'Hour')}`;
+      }
+
+      const days = Math.floor(hours / 24);
+      const remainingHours = hours % 24;
+
+      if (remainingHours === 0) {
+        return `${days} ${Format.pluralize(days, 'Day')}`;
+      }
+
+      return `${days} ${Format.pluralize(
+        days,
+        'Day'
+      )}, ${remainingHours} ${Format.pluralize(remainingHours, 'Hour')}`;
+    };
+
     if (subtitle) {
-      subtitle.textContent = `Views in First ${State.rankingsSettings.timePeriod} ${periodUnit}`;
+      subtitle.textContent = `Views in First ${formatTimePeriod(
+        State.rankingsSettings.timePeriod
+      )}`;
     }
   },
 

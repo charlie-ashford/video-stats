@@ -3806,7 +3806,7 @@ const App = {
           border-radius: 12px;
           box-shadow: 0 4px 20px rgba(0,0,0,0.1);
         ">
-          <h1 style="color: #db421f; margin-bottom: 20px;">Site Error</h1>
+          <h1 style="color: #db421f; margin-bottom: 20px;">Website Error</h1>
           <p style="color: #666; font-size: 18px; margin-bottom: 30px;">
             The website failed to initialize properly.
           </p>

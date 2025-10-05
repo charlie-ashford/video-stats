@@ -3181,8 +3181,8 @@ const Loader = {
       }
     }
 
-    if (elements.duration && video.stats?.[0]?.duration) {
-      elements.duration.innerHTML = `Duration: ${video.stats[0].duration}`;
+    if (elements.duration && video.duration) {
+      elements.duration.innerHTML = `Duration: ${video.duration}`;
       const videoIdSpan = Dom.create('span', 'video-id');
       videoIdSpan.textContent = ` (Video ID: ${video.videoId})`;
       elements.duration.appendChild(videoIdSpan);

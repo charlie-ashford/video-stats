@@ -110,6 +110,51 @@ const Config = {
   },
 };
 
+const Net = {
+  inflight: new Map(),
+  cache: new Map(),
+  defaultTtl: 5 * 60 * 1000,
+
+  async fetchJson(url, options = {}, ttl = null) {
+    const now = Date.now();
+    const effectiveTtl = typeof ttl === 'number' ? ttl : this.defaultTtl;
+
+    const cached = this.cache.get(url);
+    if (cached && now - cached.time < effectiveTtl) {
+      return cached.data;
+    }
+
+    if (this.inflight.has(url)) {
+      return this.inflight.get(url);
+    }
+
+    const p = fetch(url, options)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        return res.json();
+      })
+      .then(json => {
+        this.cache.set(url, { time: now, data: json });
+        return json;
+      })
+      .catch(err => {
+        throw err;
+      })
+      .finally(() => {
+        this.inflight.delete(url);
+      });
+
+    this.inflight.set(url, p);
+    return p;
+  },
+
+  invalidate(url) {
+    this.cache.delete(url);
+  },
+};
+
 const SessionSettings = {
   setRankingsSettings(settings) {
     try {
@@ -194,6 +239,10 @@ const State = {
   cachedGains: new Map(),
   lastFetchTime: 0,
 
+  _currentLoadKey: null,
+  _loadedKey: null,
+  _loadPromises: new Map(),
+
   loadSettings() {
     const savedRankings = SessionSettings.getRankingsSettings();
     if (savedRankings) {
@@ -227,18 +276,22 @@ const State = {
   isMobile() {
     return this.getBreakpoint() === 'mobile';
   },
+
   getMaxDataPoints() {
     return Config.responsive.maxDataPoints[this.getBreakpoint()];
   },
+
   getChartHeight() {
     return Config.responsive.chartHeights[this.getBreakpoint()];
   },
+
   getMetricName() {
     return (
       ['views', 'likes', 'comments', 'uploads'][this.selectedMetricIndex] ||
       'views'
     );
   },
+
   isNumericMetric() {
     return this.selectedMetricIndex < 3;
   },
@@ -331,6 +384,7 @@ const Dom = {
       }
     }
   },
+
   hide(id) {
     const el = this.get(id);
     if (el) el.style.display = 'none';
@@ -464,6 +518,47 @@ const DataProcessor = {
     return result;
   },
 
+  dailyFirstPoint(timestamps, values) {
+    const map = new Map();
+    for (let i = 0; i < timestamps.length; i++) {
+      const ts = timestamps[i];
+      const dt = luxon.DateTime.fromMillis(ts, {
+        zone: 'America/New_York',
+      });
+      const key = dt.toFormat('yyyy-MM-dd');
+      if (!map.has(key)) {
+        map.set(key, { ts, val: values[i] });
+      }
+    }
+    return Array.from(map.values())
+      .sort((a, b) => a.ts - b.ts)
+      .map(e => [e.ts, e.val]);
+  },
+
+  spanInDays(timestamps) {
+    if (!timestamps || !timestamps.length) return 0;
+    const first = luxon.DateTime.fromMillis(timestamps[0], {
+      zone: 'America/New_York',
+    }).startOf('day');
+    const last = luxon.DateTime.fromMillis(timestamps[timestamps.length - 1], {
+      zone: 'America/New_York',
+    }).startOf('day');
+    return Math.max(0, Math.floor(last.diff(first, 'days').days));
+  },
+
+  seriesPointsForChart(metricKey) {
+    const values = State.processedData.series[metricKey];
+    const ts = State.processedData.timestamps;
+    if (!values || !ts || !ts.length || values.length !== ts.length) return [];
+    const spanDays = this.spanInDays(ts);
+
+    if (spanDays > 90) {
+      return this.dailyFirstPoint(ts, values);
+    }
+
+    return ts.map((t, i) => [t, values[i]]);
+  },
+
   calcYRange(seriesData, xMin = null, xMax = null) {
     if (!seriesData || seriesData.length === 0) return { min: 0, max: 100 };
 
@@ -499,70 +594,42 @@ const DataProcessor = {
 
   getCurrentSeries() {
     const metric = State.getMetricName();
-    const values = State.processedData.series[metric];
-    if (!values || !State.processedData.timestamps) return [];
-    return this.downsample(State.processedData.timestamps, values);
+    return this.seriesPointsForChart(metric);
   },
 
   processDaily(data, useTimestamp = false) {
-    const dailyData = [];
-    const processedDates = new Set();
-    if (!Array.isArray(data)) return dailyData;
+    const dailyMap = new Map();
 
-    data.forEach(entry => {
-      const entryDT = luxon.DateTime.fromISO(
-        useTimestamp ? entry.timestamp : entry.time
-      ).setZone('America/New_York');
-      const dateKey = entryDT.toFormat('yyyy-MM-dd');
-      if (processedDates.has(dateKey)) return;
+    if (!Array.isArray(data)) return [];
 
-      const sameDayEntries = data.filter(e => {
-        const dt = luxon.DateTime.fromISO(
-          useTimestamp ? e.timestamp : e.time
-        ).setZone('America/New_York');
-        return dt.toFormat('yyyy-MM-dd') === dateKey;
-      });
+    for (let i = 0; i < data.length; i++) {
+      const entry = data[i];
+      const iso = useTimestamp ? entry.timestamp : entry.time;
+      if (!iso) continue;
 
-      let closest = sameDayEntries[0];
-      let minDist = Infinity;
+      const dt = luxon.DateTime.fromISO(iso).setZone('America/New_York');
+      const dateKey = dt.toFormat('yyyy-MM-dd');
 
-      sameDayEntries.forEach(e => {
-        const dt = luxon.DateTime.fromISO(
-          useTimestamp ? e.timestamp : e.time
-        ).setZone('America/New_York');
-        const minutesFromMidnight = dt.hour * 60 + dt.minute;
-        if (minutesFromMidnight < minDist) {
-          minDist = minutesFromMidnight;
-          closest = e;
-        }
-      });
-
-      if (closest) {
-        const adjusted = { ...closest };
-        const originalDT = luxon.DateTime.fromISO(
-          useTimestamp ? adjusted.timestamp : adjusted.time
-        ).setZone('America/New_York');
-        const adjustedDT = originalDT.minus({ days: 1 });
-
+      if (!dailyMap.has(dateKey)) {
+        const adjusted = { ...entry };
+        const adjustedDT = dt.minus({ days: 1 });
         if (useTimestamp) {
           adjusted.timestamp = adjustedDT.toISO();
         } else {
           adjusted.time = adjustedDT.toISO();
         }
-
-        adjusted._originalTime = useTimestamp
-          ? closest.timestamp
-          : closest.time;
-        dailyData.push(adjusted);
-        processedDates.add(dateKey);
+        adjusted._originalTime = iso;
+        dailyMap.set(dateKey, adjusted);
       }
+    }
+
+    const arr = Array.from(dailyMap.values()).sort((a, b) => {
+      const da = new Date(useTimestamp ? a.timestamp : a.time);
+      const db = new Date(useTimestamp ? b.timestamp : b.time);
+      return da - db;
     });
 
-    return dailyData.sort((a, b) => {
-      const dateA = new Date(useTimestamp ? a.timestamp : a.time);
-      const dateB = new Date(useTimestamp ? b.timestamp : b.time);
-      return dateA - dateB;
-    });
+    return arr;
   },
 };
 
@@ -609,10 +676,7 @@ const ChartBuilder = {
     }
 
     return configs.map(config => {
-      const rawValues = State.processedData.series[config.key];
-      const seriesData = rawValues
-        ? DataProcessor.downsample(State.processedData.timestamps, rawValues)
-        : [];
+      const seriesData = DataProcessor.seriesPointsForChart(config.key);
 
       return {
         name: config.name,
@@ -621,6 +685,7 @@ const ChartBuilder = {
         color: Config.colors[config.key],
         fillColor: this.gradient(Config.colors[config.key]),
         lineWidth: State.isMobile() ? 2 : 3,
+        boostThreshold: 2500,
       };
     });
   },
@@ -686,6 +751,7 @@ const ChartBuilder = {
           lineWidth: State.isMobile() ? 2 : 2.5,
           type: 'line',
           connectNulls: false,
+          boostThreshold: 0,
         });
       }
     });
@@ -1028,7 +1094,7 @@ const Charts = {
     }
   },
 
-  async create() {
+  async create({ animate = true } = {}) {
     const container = Dom.get('videoChart');
     if (!container) return false;
     container.innerHTML = '';
@@ -1103,6 +1169,13 @@ const Charts = {
           State.getMetricName().slice(1)
         } Gains`
       : seriesConfig[State.selectedMetricIndex]?.name || 'Chart';
+    const shouldAnimate = animate && !State.isMobile();
+
+    const visibleSeries = seriesConfig.filter(s => s.visible);
+    const maxPointsVisible = Math.max(
+      0,
+      ...visibleSeries.map(s => (s.data ? s.data.length : 0))
+    );
 
     State.chart = Highcharts.chart('videoChart', {
       chart: {
@@ -1115,9 +1188,9 @@ const Charts = {
         zoomType: isHourly ? undefined : 'x',
         panning: { enabled: !isHourly, type: 'x' },
         panKey: 'shift',
-        animation: State.isMobile()
-          ? false
-          : { duration: 600, easing: 'easeOutQuart' },
+        animation: shouldAnimate
+          ? { duration: 600, easing: 'easeOutQuart' }
+          : false,
         events: {
           ...ChartBuilder.events(),
           load: function () {
@@ -1137,7 +1210,11 @@ const Charts = {
         spacingRight: State.isMobile() ? 10 : 25,
         borderRadius: 12,
       },
-      boost: { enabled: false },
+      boost: {
+        enabled: maxPointsVisible > 2500,
+        useGPUTranslations: true,
+        usePreAllocated: true,
+      },
       title: {
         text: chartTitle,
         style: {
@@ -1217,9 +1294,9 @@ const Charts = {
       tooltip: ChartBuilder.tooltip(isHourly),
       plotOptions: {
         series: {
-          animation: State.isMobile()
-            ? false
-            : { duration: 400, easing: 'easeOutQuart' },
+          animation: shouldAnimate
+            ? { duration: 400, easing: 'easeOutQuart' }
+            : false,
           marker: {
             enabled: false,
             states: {
@@ -1238,8 +1315,9 @@ const Charts = {
             },
             inactive: { opacity: 0.2 },
           },
-          turboThreshold: State.isMobile() ? 500 : 1000,
-          cropThreshold: State.isMobile() ? 250 : 500,
+          turboThreshold: 0,
+          cropThreshold: 0,
+          boostThreshold: 2500,
         },
         area: {
           fillOpacity: State.isMobile() ? 0.4 : 0.6,
@@ -1288,7 +1366,7 @@ const Charts = {
 
   redraw() {
     const delay = State.isMobile() ? 300 : 100;
-    setTimeout(() => this.create(), delay);
+    setTimeout(() => this.create({ animate: false }), delay);
   },
 };
 
@@ -1342,7 +1420,7 @@ const Stats = {
 const Tables = {
   calcChanges(current, previous, dailyData, index) {
     const calcChange = (curr, prev) => {
-      if (!prev) return '';
+      if (!prev && prev !== 0) return '';
       const change = curr - prev;
       const arrow = change < 0 ? '↓' : '';
       const changeString =
@@ -1416,37 +1494,63 @@ const Tables = {
     tableBody.insertBefore(row, tableBody.firstChild);
   },
 
-  addHistoricalRows(tableBody, dailyData, useTimestamp) {
-    const fragment = document.createDocumentFragment();
+  addHistoricalRowsChunked(
+    tableBody,
+    dailyData,
+    useTimestamp,
+    chunkSize = 250
+  ) {
+    let i = dailyData.length - 1;
 
-    for (let i = dailyData.length - 1; i >= 0; i--) {
-      const entry = dailyData[i];
-      const row = document.createElement('tr');
-      const date = luxon.DateTime.fromISO(
-        useTimestamp ? entry.timestamp : entry.time
-      ).setZone('America/New_York');
-      const { dateString } = Format.dateTime(date);
-      const changes = this.calcChanges(entry, dailyData[i - 1], dailyData, i);
+    const renderChunk = deadline => {
+      const frag = document.createDocumentFragment();
+      let count = 0;
 
-      row.innerHTML = `
-        <td>${dateString}</td>
-        <td>${Math.round(entry.views).toLocaleString()} <span class="change ${
-        changes.views.class
-      }">(${changes.views.change})</span></td>
-        <td>${Math.round(entry.likes).toLocaleString()} <span class="change ${
-        changes.likes.class
-      }">(${changes.likes.change})</span></td>
-        <td>${Math.round(
-          entry.comments
-        ).toLocaleString()} <span class="change ${changes.comments.class}">(${
-        changes.comments.change
-      })</span></td>
-      `;
+      while (i >= 0 && count < chunkSize) {
+        const entry = dailyData[i];
+        const row = document.createElement('tr');
+        const date = luxon.DateTime.fromISO(
+          useTimestamp ? entry.timestamp : entry.time
+        ).setZone('America/New_York');
+        const { dateString } = Format.dateTime(date);
+        const changes = this.calcChanges(entry, dailyData[i - 1], dailyData, i);
 
-      fragment.appendChild(row);
+        row.innerHTML = `
+          <td>${dateString}</td>
+          <td>${Math.round(entry.views).toLocaleString()} <span class="change ${
+          changes.views.class
+        }">(${changes.views.change})</span></td>
+          <td>${Math.round(entry.likes).toLocaleString()} <span class="change ${
+          changes.likes.class
+        }">(${changes.likes.change})</span></td>
+          <td>${Math.round(
+            entry.comments
+          ).toLocaleString()} <span class="change ${changes.comments.class}">(${
+          changes.comments.change
+        })</span></td>
+        `;
+
+        frag.appendChild(row);
+        i--;
+        count++;
+      }
+
+      tableBody.appendChild(frag);
+
+      if (i >= 0) {
+        if (typeof requestIdleCallback !== 'undefined') {
+          requestIdleCallback(renderChunk);
+        } else {
+          setTimeout(renderChunk, 0);
+        }
+      }
+    };
+
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(renderChunk);
+    } else {
+      setTimeout(renderChunk, 0);
     }
-
-    tableBody.appendChild(fragment);
   },
 
   create(dailyData, currentData, useTimestamp = false) {
@@ -1477,7 +1581,7 @@ const Tables = {
       this.addCurrentRow(tableBody, currentData, dailyData, useTimestamp);
     }
 
-    this.addHistoricalRows(tableBody, dailyData, useTimestamp);
+    this.addHistoricalRowsChunked(tableBody, dailyData, useTimestamp, 300);
     Dom.show('dailyStatsTable');
   },
 };
@@ -1499,11 +1603,7 @@ const Rankings = {
     const url = `${Config.api.rankings}?channel=${channelId}&filter=${filter}`;
 
     try {
-      const response = await fetch(url);
-      if (!response.ok)
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
-      const data = await response.json();
+      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
       if (!data.videos || !Array.isArray(data.videos)) return [];
 
       State.cachedRankings.set(cacheKey, data.videos);
@@ -1632,9 +1732,6 @@ const Rankings = {
         State.rankingsSettings.timePeriod,
         'hour'
       );
-      const metricName =
-        State.rankingsSettings.metric.charAt(0).toUpperCase() +
-        State.rankingsSettings.metric.slice(1);
 
       item.innerHTML = `
         <div class="ranking-position">${index + 1}</div>
@@ -1905,14 +2002,10 @@ const Gains = {
       return this.allVideosCache.get(cacheKey);
     }
 
-    const url = `${Config.api.gains}?channel=${channelId}&metric=${metric}&filter=${filter}&limit=50`;
+    const url = `${Config.api.gains}?channel=${channelId}&metric=${metric}&filter=${filter}`;
 
     try {
-      const response = await fetch(url);
-      if (!response.ok)
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
-      const data = await response.json();
+      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
       if (!data.videos || !Array.isArray(data.videos)) return [];
 
       this.allVideosCache.set(cacheKey, data.videos);
@@ -2447,9 +2540,7 @@ const HourlyMode = {
   async fetchHourlyData(videoId, channel, startDate, endDate) {
     const url = Config.api.hourly(videoId, channel, startDate, endDate);
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
+      return await Net.fetchJson(url, {}, 2 * 60 * 1000);
     } catch (error) {
       throw error;
     }
@@ -2593,6 +2684,9 @@ const Search = {
   videoChannelMap: new Map(),
   allVideosByChannel: {},
   currentDropdownChannel: 'mrbeast',
+
+  _initialUrlHandled: false,
+  _initialKey: null,
 
   handleInput: Dom.debounce(function (e) {
     const term = e.target.value.toLowerCase();
@@ -2893,11 +2987,11 @@ const Search = {
 
   async fetchAllVideos() {
     try {
-      const response = await fetch(`${Config.api.baseUrl}/allvideos`);
-      if (!response.ok)
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
-      const data = await response.json();
+      const data = await Net.fetchJson(
+        `${Config.api.baseUrl}/allvideos`,
+        {},
+        5 * 60 * 1000
+      );
       if (data?.channels) {
         Object.entries(data.channels).forEach(([channel, videos]) => {
           this.allVideosByChannel[channel] = videos;
@@ -2921,6 +3015,10 @@ const Search = {
   },
 
   handleUrlParams(hasAllVideos) {
+    if (this._initialUrlHandled && hasAllVideos) {
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const videoId = params.get('data');
     let channelParam = params.get('channel');
@@ -2929,6 +3027,14 @@ const Search = {
       acc[ch.id] = ch;
       return acc;
     }, {});
+
+    const key = `${videoId || 'none'}|${channelParam || 'none'}`;
+
+    if (!this._initialUrlHandled) {
+      this._initialKey = key;
+    } else if (this._initialKey && key === this._initialKey) {
+      return;
+    }
 
     if (videoId === 'rankings') {
       const channel =
@@ -3004,40 +3110,22 @@ const Search = {
         this.updateVideoList(actualChannel);
       }
 
-      this.fetchVideoTitle(videoId, actualChannel).then(() => {
-        Loader.loadVideo(videoId, actualChannel, true);
-      });
+      Loader.loadVideo(videoId, actualChannel, true);
     } else {
       this.loadDefaultVideo();
     }
-  },
 
-  async fetchVideoTitle(videoId, channel) {
-    try {
-      let endpoint = Config.api.videoStats.byChannel(channel, videoId);
-      let response = await fetch(endpoint);
-
-      if (!response.ok) {
-        endpoint = Config.api.videoStats.base + videoId;
-        response = await fetch(endpoint);
-      }
-
-      if (response.ok) {
-        const video = await response.json();
-        const input = Dom.get('searchInput');
-        if (input && video.title) {
-          input.value = Format.addCommasToTitle(video.title);
-        }
-      }
-    } catch (error) {}
+    if (!this._initialUrlHandled) this._initialUrlHandled = true;
   },
 
   async loadDefaultVideo() {
     try {
-      const response = await fetch(Config.api.videos.byChannel('mrbeast'));
-      if (!response.ok) throw new Error('Failed to fetch videos');
+      const data = await Net.fetchJson(
+        Config.api.videos.byChannel('mrbeast'),
+        {},
+        2 * 60 * 1000
+      );
 
-      const data = await response.json();
       if (
         !data.videos ||
         !Array.isArray(data.videos) ||
@@ -3095,35 +3183,30 @@ const Search = {
 
     this.handleUrlParams(false);
 
+    const runBg = async () => {
+      const hasAllVideos = await this.fetchAllVideos();
+
+      if (hasAllVideos) {
+        this.updateVideoList('mrbeast');
+      }
+
+      if (this.needsVideoData()) {
+        this.handleUrlParams(hasAllVideos);
+      }
+    };
+
     if ('requestIdleCallback' in window) {
-      requestIdleCallback(async () => {
-        const hasAllVideos = await this.fetchAllVideos();
-
-        if (hasAllVideos) {
-          this.updateVideoList('mrbeast');
-        }
-
-        if (this.needsVideoData()) {
-          this.handleUrlParams(hasAllVideos);
-        }
-      });
+      requestIdleCallback(runBg);
     } else {
-      setTimeout(async () => {
-        const hasAllVideos = await this.fetchAllVideos();
-
-        if (hasAllVideos) {
-          this.updateVideoList('mrbeast');
-        }
-
-        if (this.needsVideoData()) {
-          this.handleUrlParams(hasAllVideos);
-        }
-      }, 100);
+      setTimeout(runBg, 100);
     }
   },
 };
 
 const Loader = {
+  _loadPromises: new Map(),
+  _loadedKey: null,
+
   async setupProfile(profileUrl) {
     let headerLeft = document.querySelector('.header-left');
     if (!headerLeft) {
@@ -3159,6 +3242,9 @@ const Loader = {
     if (elements.videoLink && video.videoId && video.title) {
       elements.videoLink.href = `https://www.youtube.com/watch?v=${video.videoId}`;
       elements.videoLink.textContent = Format.addCommasToTitle(video.title);
+
+      const input = Dom.get('searchInput');
+      if (input) input.value = Format.addCommasToTitle(video.title);
     }
 
     if (elements.uploadDate && video.uploadTime) {
@@ -3199,260 +3285,297 @@ const Loader = {
     showGains = false,
     isNavigation = false
   ) {
-    State.reset();
-    HourlyMode.reset();
-    HourlyMode.hide();
-    State.currentEntityId = channelId;
-    State.currentChannel = channelId;
-    State.isRankingsView = showRankings;
-    State.isGainsView = showGains;
-
-    State.loadSettings();
-
-    if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    Search.updateVideoList(channelId);
-
-    const headerTitle = document.querySelector('header h1');
-    if (headerTitle) {
-      if (showRankings) {
-        headerTitle.textContent = 'Top Video Rankings';
-      } else if (showGains) {
-        headerTitle.textContent = 'Top Video Gains';
-      } else {
-        headerTitle.textContent = 'Channel Analytics';
-      }
+    const key = `channel:${channelId}|${
+      showRankings ? 'rank' : showGains ? 'gains' : 'stats'
+    }`;
+    if (this._loadedKey === key && !isNavigation) {
+      return;
     }
 
-    Dom.removeImg();
-    await this.setupProfile(profileUrl);
+    if (this._loadPromises.has(key)) {
+      return this._loadPromises.get(key);
+    }
 
-    if (showRankings) {
-      if (!isNavigation) {
-        Dom.updateUrl('rankings', channelId);
-      }
-      Dom.setView('rankings');
-      const exportBtn = Dom.get('exportButton');
-      if (exportBtn) exportBtn.style.display = 'none';
+    const p = (async () => {
+      State.reset();
+      HourlyMode.reset();
+      HourlyMode.hide();
+      State.currentEntityId = channelId;
+      State.currentChannel = channelId;
+      State.isRankingsView = showRankings;
+      State.isGainsView = showGains;
 
-      const list = Dom.get('rankingsList');
-      if (list) {
-        list.innerHTML =
-          '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading rankings...</div>';
-      }
+      State.loadSettings();
 
-      Rankings.applySettings();
+      if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      try {
-        const rankings = await Rankings.fetch(
-          channelId,
-          State.rankingsSettings.filter
-        );
+      Search.updateVideoList(channelId);
 
-        if (rankings.length > 0) {
-          const savedSettings = SessionSettings.getRankingsSettings();
-          if (!savedSettings) {
-            const defaults = Rankings.getDefaults(rankings);
-            State.rankingsSettings.videoCount = defaults.videoCount;
-            State.rankingsSettings.timePeriod = defaults.timePeriod;
-            Rankings.applySettings();
-          }
-
-          Rankings.display(rankings);
+      const headerTitle = document.querySelector('header h1');
+      if (headerTitle) {
+        if (showRankings) {
+          headerTitle.textContent = 'Top Video Rankings';
+        } else if (showGains) {
+          headerTitle.textContent = 'Top Video Gains';
         } else {
+          headerTitle.textContent = 'Channel Analytics';
+        }
+      }
+
+      Dom.removeImg();
+      await this.setupProfile(profileUrl);
+
+      if (showRankings) {
+        if (!isNavigation) {
+          Dom.updateUrl('rankings', channelId);
+        }
+        Dom.setView('rankings');
+        const exportBtn = Dom.get('exportButton');
+        if (exportBtn) exportBtn.style.display = 'none';
+
+        const list = Dom.get('rankingsList');
+        if (list) {
+          list.innerHTML =
+            '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading rankings...</div>';
+        }
+
+        Rankings.applySettings();
+
+        try {
+          const rankings = await Rankings.fetch(
+            channelId,
+            State.rankingsSettings.filter
+          );
+
+          if (rankings.length > 0) {
+            const savedSettings = SessionSettings.getRankingsSettings();
+            if (!savedSettings) {
+              const defaults = Rankings.getDefaults(rankings);
+              State.rankingsSettings.videoCount = defaults.videoCount;
+              State.rankingsSettings.timePeriod = defaults.timePeriod;
+              Rankings.applySettings();
+            }
+
+            Rankings.display(rankings);
+          } else {
+            if (list) {
+              list.innerHTML =
+                '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No ranking data available for this channel.</div>';
+            }
+          }
+        } catch (error) {
           if (list) {
             list.innerHTML =
-              '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No ranking data available for this channel.</div>';
+              '<div style="text-align:center;padding:20px;color:red;">Error loading rankings. Please try again.</div>';
           }
         }
-      } catch (error) {
+      } else if (showGains) {
+        if (!isNavigation) {
+          Dom.updateUrl('gains', channelId);
+        }
+        Dom.setView('gains');
+        const exportBtn = Dom.get('exportButton');
+        if (exportBtn) exportBtn.style.display = 'none';
+
+        const list = Dom.get('gainsList');
         if (list) {
           list.innerHTML =
-            '<div style="text-align:center;padding:20px;color:red;">Error loading rankings. Please try again.</div>';
+            '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading gains...</div>';
+        }
+
+        Gains.applySettings();
+
+        try {
+          const gains = await Gains.fetch(
+            channelId,
+            State.gainsSettings.metric,
+            State.gainsSettings.filter,
+            State.gainsSettings.period
+          );
+
+          if (State.isGainsView) {
+            Gains.display(gains, State.gainsSettings.count);
+          }
+        } catch (error) {
+          if (list) {
+            list.innerHTML =
+              '<div style="text-align:center;padding:20px;color:red;">Error loading gains. Please try again.</div>';
+          }
+        }
+      } else {
+        if (!isNavigation) {
+          Dom.updateUrl(channelId);
+        }
+        Dom.setView('video');
+        Dom.hide('videoInfoCard');
+        const exportBtn = Dom.get('exportButton');
+        if (exportBtn) exportBtn.style.display = 'flex';
+
+        const container = Dom.get('videoChart');
+        if (container) {
+          container.innerHTML =
+            '<div style="text-align:center;padding:40px;">Loading channel data...</div>';
+        }
+
+        const uploadCard = Dom.get('uploadCountCard');
+        if (uploadCard) uploadCard.style.display = 'flex';
+
+        const grid = document.querySelector('.stats-grid');
+        if (grid) grid.classList.remove('three-columns');
+
+        try {
+          const endpoint =
+            channelId === 'mrbeast'
+              ? Config.api.combinedHistory.mrbeast
+              : Config.api.combinedHistory.byChannel(channelId);
+
+          const combinedData = await Net.fetchJson(endpoint, {}, 2 * 60 * 1000);
+
+          if (Array.isArray(combinedData)) {
+            State.rawData = combinedData;
+            State.processedData = DataProcessor.transform(combinedData);
+
+            await Charts.create();
+            Stats.update();
+
+            const dailyData = DataProcessor.processDaily(combinedData);
+            const currentData = combinedData[combinedData.length - 1];
+            Tables.create(dailyData, currentData);
+          } else {
+            throw new Error('Invalid data format received');
+          }
+        } catch (error) {
+          const chart = Dom.get('videoChart');
+          if (chart) {
+            chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load data: ${error.message}<br>Please try again.</div>`;
+          }
         }
       }
-    } else if (showGains) {
+
+      this._loadedKey = key;
+    })();
+
+    this._loadPromises.set(key, p);
+    try {
+      await p;
+    } finally {
+      this._loadPromises.delete(key);
+    }
+    return p;
+  },
+
+  async loadVideo(videoId, channelId = 'mrbeast', isNavigation = false) {
+    const key = `video:${videoId}|${channelId}`;
+
+    if (this._loadPromises.has(key)) {
+      return this._loadPromises.get(key);
+    }
+    if (this._loadedKey === key && !isNavigation) {
+      return;
+    }
+
+    const p = (async () => {
+      State.reset();
+      HourlyMode.reset();
+      State.currentEntityId = videoId;
+      State.currentChannel = channelId;
+      State.isRankingsView = false;
+      State.isGainsView = false;
+
+      if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      Search.updateVideoList(channelId);
+
       if (!isNavigation) {
-        Dom.updateUrl('gains', channelId);
-      }
-      Dom.setView('gains');
-      const exportBtn = Dom.get('exportButton');
-      if (exportBtn) exportBtn.style.display = 'none';
-
-      const list = Dom.get('gainsList');
-      if (list) {
-        list.innerHTML =
-          '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading gains...</div>';
-      }
-
-      Gains.applySettings();
-
-      try {
-        const gains = await Gains.fetch(
-          channelId,
-          State.gainsSettings.metric,
-          State.gainsSettings.filter,
-          State.gainsSettings.period
-        );
-
-        if (State.isGainsView) {
-          Gains.display(gains, State.gainsSettings.count);
-        }
-      } catch (error) {
-        if (list) {
-          list.innerHTML =
-            '<div style="text-align:center;padding:20px;color:red;">Error loading gains. Please try again.</div>';
+        if (channelId !== 'mrbeast') {
+          Dom.updateUrl(videoId, channelId);
+        } else {
+          Dom.updateUrl(videoId);
         }
       }
-    } else {
-      if (!isNavigation) {
-        Dom.updateUrl(channelId);
-      }
+
       Dom.setView('video');
-      Dom.hide('videoInfoCard');
       const exportBtn = Dom.get('exportButton');
       if (exportBtn) exportBtn.style.display = 'flex';
 
       const container = Dom.get('videoChart');
       if (container) {
         container.innerHTML =
-          '<div style="text-align:center;padding:40px;">Loading channel data...</div>';
+          '<div style="text-align:center;padding:40px;">Loading video data...</div>';
       }
 
       const uploadCard = Dom.get('uploadCountCard');
-      if (uploadCard) uploadCard.style.display = 'flex';
+      if (uploadCard) uploadCard.style.display = 'none';
 
       const grid = document.querySelector('.stats-grid');
-      if (grid) grid.classList.remove('three-columns');
+      if (grid) grid.classList.add('three-columns');
+
+      const headerTitle = document.querySelector('header h1');
+      if (headerTitle) headerTitle.textContent = 'Video Analytics';
+
+      if (State.selectedMetricIndex === 3) {
+        State.selectedMetricIndex = 0;
+        document.querySelectorAll('.stat-card').forEach((card, index) => {
+          card.classList.toggle('active', index === 0);
+        });
+      }
+
+      Dom.removeImg();
 
       try {
-        const endpoint =
-          channelId === 'mrbeast'
-            ? Config.api.combinedHistory.mrbeast
-            : Config.api.combinedHistory.byChannel(channelId);
+        let endpoint = Config.api.videoStats.byChannel(channelId, videoId);
+        let video = null;
+        try {
+          video = await Net.fetchJson(endpoint, {}, 2 * 60 * 1000);
+        } catch (e) {
+          endpoint = Config.api.videoStats.base + videoId;
+          video = await Net.fetchJson(endpoint, {}, 2 * 60 * 1000);
+        }
 
-        const response = await fetch(endpoint);
-        if (!response.ok)
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (video?.stats && Array.isArray(video.stats)) {
+          this.updateVideoInfo(video);
 
-        const combinedData = await response.json();
+          const filtered = video.stats.filter(
+            stat => stat.views != null && stat.likes != null
+          );
 
-        if (Array.isArray(combinedData)) {
-          State.rawData = combinedData;
-          State.processedData = DataProcessor.transform(combinedData);
+          State.rawData = filtered;
+
+          const processed = DataProcessor.transform(filtered);
+          delete processed.series.uploads;
+          State.processedData = processed;
 
           await Charts.create();
           Stats.update();
 
-          const dailyData = DataProcessor.processDaily(combinedData);
-          const currentData = combinedData[combinedData.length - 1];
-          Tables.create(dailyData, currentData);
+          const dailyData = DataProcessor.processDaily(filtered, true);
+          const currentData = filtered[filtered.length - 1];
+          Tables.create(dailyData, currentData, true);
+
+          Dom.show('videoInfoCard');
+
+          HourlyMode.show();
         } else {
-          throw new Error('Invalid data format received');
+          throw new Error('Invalid video data format');
         }
       } catch (error) {
         const chart = Dom.get('videoChart');
         if (chart) {
-          chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load data: ${error.message}<br>Please try again.</div>`;
+          chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load video data: ${error.message}<br>Please try again.</div>`;
         }
       }
-    }
-  },
 
-  async loadVideo(videoId, channelId = 'mrbeast', isNavigation = false) {
-    State.reset();
-    HourlyMode.reset();
-    State.currentEntityId = videoId;
-    State.currentChannel = channelId;
-    State.isRankingsView = false;
-    State.isGainsView = false;
+      this._loadedKey = key;
+    })();
 
-    if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    Search.updateVideoList(channelId);
-
-    if (!isNavigation) {
-      if (channelId !== 'mrbeast') {
-        Dom.updateUrl(videoId, channelId);
-      } else {
-        Dom.updateUrl(videoId);
-      }
-    }
-
-    Dom.setView('video');
-    const exportBtn = Dom.get('exportButton');
-    if (exportBtn) exportBtn.style.display = 'flex';
-
-    const container = Dom.get('videoChart');
-    if (container) {
-      container.innerHTML =
-        '<div style="text-align:center;padding:40px;">Loading video data...</div>';
-    }
-
-    const uploadCard = Dom.get('uploadCountCard');
-    if (uploadCard) uploadCard.style.display = 'none';
-
-    const grid = document.querySelector('.stats-grid');
-    if (grid) grid.classList.add('three-columns');
-
-    const headerTitle = document.querySelector('header h1');
-    if (headerTitle) headerTitle.textContent = 'Video Analytics';
-
-    if (State.selectedMetricIndex === 3) {
-      State.selectedMetricIndex = 0;
-      document.querySelectorAll('.stat-card').forEach((card, index) => {
-        card.classList.toggle('active', index === 0);
-      });
-    }
-
-    Dom.removeImg();
-
+    this._loadPromises.set(key, p);
     try {
-      let endpoint = Config.api.videoStats.byChannel(channelId, videoId);
-      let response = await fetch(endpoint);
-
-      if (!response.ok) {
-        endpoint = Config.api.videoStats.base + videoId;
-        response = await fetch(endpoint);
-      }
-
-      if (!response.ok)
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
-      const video = await response.json();
-
-      if (video?.stats && Array.isArray(video.stats)) {
-        this.updateVideoInfo(video);
-
-        const filtered = video.stats.filter(
-          stat => stat.views != null && stat.likes != null
-        );
-
-        State.rawData = filtered;
-
-        const processed = DataProcessor.transform(filtered);
-        delete processed.series.uploads;
-        State.processedData = processed;
-
-        await Charts.create();
-        Stats.update();
-
-        const dailyData = DataProcessor.processDaily(filtered, true);
-        const currentData = filtered[filtered.length - 1];
-        Tables.create(dailyData, currentData, true);
-
-        Dom.show('videoInfoCard');
-
-        HourlyMode.show();
-      } else {
-        throw new Error('Invalid video data format');
-      }
-    } catch (error) {
-      const chart = Dom.get('videoChart');
-      if (chart) {
-        chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load video data: ${error.message}<br>Please try again.</div>`;
-      }
+      await p;
+    } finally {
+      this._loadPromises.delete(key);
     }
+
+    return p;
   },
 };
 

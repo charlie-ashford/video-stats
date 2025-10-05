@@ -2689,14 +2689,24 @@ const Search = {
   _initialKey: null,
 
   handleInput: Dom.debounce(function (e) {
-    const term = e.target.value.toLowerCase();
-    document.querySelectorAll('.dropdown-list-item').forEach(item => {
-      if (!item.classList.contains('bold')) {
-        item.style.display = item.textContent.toLowerCase().includes(term)
-          ? ''
-          : 'none';
-      }
-    });
+    const dropdown = Dom.get('dropdownList');
+    if (!dropdown) return;
+
+    const term = e.target.value.trim().toLowerCase();
+    const isSearching = term.length > 0;
+
+    dropdown
+      .querySelectorAll('.dropdown-list-item.bold')
+      .forEach(item => {
+        item.style.display = isSearching ? 'none' : '';
+      });
+
+    dropdown
+      .querySelectorAll('.dropdown-list-item:not(.bold)')
+      .forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(term) ? '' : 'none';
+      });
   }, 150),
 
   handleClickOut(e) {
@@ -2751,7 +2761,7 @@ const Search = {
           } else if (!State.isRankingsView && !State.isGainsView) {
             HourlyMode.show();
           }
-          Charts.redraw();
+          Charts.create({ animate: true });
         }
       });
     });

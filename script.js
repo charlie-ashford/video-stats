@@ -2695,11 +2695,9 @@ const Search = {
     const term = e.target.value.trim().toLowerCase();
     const isSearching = term.length > 0;
 
-    dropdown
-      .querySelectorAll('.dropdown-list-item.bold')
-      .forEach(item => {
-        item.style.display = isSearching ? 'none' : '';
-      });
+    dropdown.querySelectorAll('.dropdown-list-item.bold').forEach(item => {
+      item.style.display = isSearching ? 'none' : '';
+    });
 
     dropdown
       .querySelectorAll('.dropdown-list-item:not(.bold)')

@@ -3808,7 +3808,7 @@ const App = {
         ">
           <h1 style="color: #db421f; margin-bottom: 20px;">Site Error</h1>
           <p style="color: #666; font-size: 18px; margin-bottom: 30px;">
-            The site failed to initialize properly.
+            The website failed to initialize properly.
           </p>
           <div style="
             background: #fff;

@@ -63,6 +63,11 @@ const Config = {
       avatar: 'https://www.banner.yt/UCzfPgw5WN9bvMiBz-JJYVyw/avatar',
     },
     {
+      id: 'taylor',
+      name: 'Taylor Swift',
+      avatar: 'https://www.banner.yt/UCANLZYMidaCbLQFWXBC95Jg/avatar',
+    },
+    {
       id: 'cocomelon',
       name: 'Cocomelon - Nursery Rhymes',
       avatar: 'https://www.banner.yt/UCbCmjCuTUZos6Inko4u57UQ/avatar',
@@ -71,11 +76,6 @@ const Config = {
       id: 'ronaldo',
       name: 'UR · Cristiano',
       avatar: 'https://www.banner.yt/UCtxD0x6AuNNqdXO9Wp5GHew/avatar',
-    },
-    {
-      id: 'taylor',
-      name: 'Taylor Swift',
-      avatar: 'https://www.banner.yt/UCANLZYMidaCbLQFWXBC95Jg/avatar',
     },
   ],
   colors: {

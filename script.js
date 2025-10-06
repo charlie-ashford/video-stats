@@ -4448,7 +4448,7 @@ const Export = {
 
     const csvContent = this.generateCsv(timestamps);
     if (csvContent) {
-      this.download(csvContent, `${State.currentEntityId}_all_time_data.csv`);
+      this.download(csvContent, `${State.currentEntityId}.csv`);
     }
   },
 

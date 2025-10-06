@@ -1263,16 +1263,7 @@ const DataProcessor = {
     if (State.isGainsMode && metric !== 'uploads') {
       const values = State.processedData.series[metric];
       const timestamps = State.processedData.timestamps;
-
-      const config = State.getChartConfig();
-      if (
-        config.dataPoints === 'hourly' ||
-        config.dataPoints === 'hourly-chart'
-      ) {
-        return this.processDailyGains(timestamps, values);
-      } else {
-        return this.processGains(timestamps, values);
-      }
+      return this.processDailyGains(timestamps, values);
     }
 
     return this.seriesPointsForChart(metric);
@@ -1361,18 +1352,7 @@ const ChartBuilder = {
       let seriesName = config.name;
 
       if (State.isGainsMode && config.key !== 'uploads') {
-        const values = State.processedData.series[config.key];
-        const timestamps = State.processedData.timestamps;
-
-        const chartConfig = State.getChartConfig();
-        if (
-          chartConfig.dataPoints === 'hourly' ||
-          chartConfig.dataPoints === 'hourly-chart'
-        ) {
-          seriesData = DataProcessor.processDailyGains(timestamps, values);
-        } else {
-          seriesData = DataProcessor.processGains(timestamps, values);
-        }
+        seriesData = DataProcessor.getCurrentSeries();
         seriesName = `Daily ${config.name} Gains`;
       } else {
         seriesData = DataProcessor.seriesPointsForChart(config.key);

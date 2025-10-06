@@ -4413,7 +4413,7 @@ const Export = {
 
   toCsv() {
     if (!State.rawData || !Array.isArray(State.rawData)) {
-      console.error('No raw data available for export');
+      console.error('No data available for export');
       return;
     }
 
@@ -4442,7 +4442,7 @@ const Export = {
       .sort((a, b) => a.date - b.date);
 
     if (timestamps.length === 0) {
-      console.error('No valid data points found for export');
+      console.error('No data found for export');
       return;
     }
 

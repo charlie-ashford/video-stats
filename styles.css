@@ -217,6 +217,8 @@ header h1 {
   flex-direction: column;
   transition: opacity 0.3s, transform 0.3s;
   border: 1px solid var(--border-color);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dropdown-list.show {
@@ -494,6 +496,8 @@ header h1 {
   max-height: 600px;
   overflow-x: auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .daily-stats-table table {
@@ -2209,6 +2213,10 @@ footer .fa-heart {
   visibility: hidden;
   transform: translateY(-10px);
   transition: all 0.3s ease;
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chart-mode-options.show {

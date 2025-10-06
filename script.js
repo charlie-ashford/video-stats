@@ -4549,6 +4549,53 @@ const Layout = {
   },
 };
 
+function lockScroll(el) {
+  if (!el) return;
+
+  el.addEventListener(
+    'wheel',
+    e => {
+      const delta = e.deltaY;
+      const atTop = el.scrollTop <= 0;
+      const atBottom =
+        Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight;
+
+      if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
+        e.preventDefault();
+      }
+    },
+    { passive: false }
+  );
+
+  let startY = 0;
+  el.addEventListener(
+    'touchstart',
+    e => {
+      startY = e.touches[0].clientY;
+    },
+    { passive: true }
+  );
+
+  el.addEventListener(
+    'touchmove',
+    e => {
+      const currentY = e.touches[0].clientY;
+      const delta = startY - currentY;
+      const atTop = el.scrollTop <= 0;
+      const atBottom =
+        Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight;
+
+      if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
+        e.preventDefault();
+      }
+    },
+    { passive: false }
+  );
+}
+
+const dropdown = Dom.get('dropdownList');
+if (dropdown) lockScroll(dropdown);
+
 const App = {
   init() {
     try {

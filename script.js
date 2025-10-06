@@ -668,8 +668,8 @@ const ChartModeDropdown = {
     const end = luxon.DateTime.now().setZone('America/New_York');
     const start = end.minus({ days: Config.hourly.defaultDays });
 
-    State.hourlyDateRange.start = Format.toISODate(start);
-    State.hourlyDateRange.end = Format.toISODate(end);
+    State.hourlyDateRange.start = start.toISODate();
+    State.hourlyDateRange.end = end.toISODate();
   },
 
   async fetchHourlyData(videoId, channel, startDate, endDate) {
@@ -1028,23 +1028,6 @@ const Dom = {
 };
 
 const Format = {
-  addCommas: (() => {
-    const formatter = new Intl.NumberFormat('en-US');
-    return num => formatter.format(num);
-  })(),
-
-  addCommasToTitle(title) {
-    return title ? title.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,') : '';
-  },
-
-  compact(value) {
-    if (typeof value !== 'number') return '0';
-    if (value >= 1e9) return (value / 1e9).toFixed(1) + 'B';
-    if (value >= 1e6) return (value / 1e6).toFixed(1) + 'M';
-    if (value >= 1e3) return (value / 1e3).toFixed(1) + 'K';
-    return value.toString();
-  },
-
   axis(value, tickInterval) {
     const abs = Math.abs(value);
     if (abs >= 1e9) {
@@ -1071,19 +1054,6 @@ const Format = {
       dateString: luxonDateTime.toFormat('ccc, MMM d, yyyy'),
       timeString: luxonDateTime.toFormat('HH:mm:ss'),
     };
-  },
-
-  pluralize(count, singular, plural) {
-    return count === 1 ? singular : plural || `${singular}s`;
-  },
-
-  percentage(current, previous) {
-    if (!previous || previous === 0) return null;
-    return ((current - previous) / previous) * 100;
-  },
-
-  toISODate(luxonDateTime) {
-    return luxonDateTime.setZone('America/New_York').toFormat('yyyy-MM-dd');
   },
 };
 
@@ -1811,7 +1781,7 @@ const ChartBuilder = {
           const pointStart = dt.startOf('day');
           const rawDays = Math.floor(pointStart.diff(uploadStart, 'days').days);
           const dayNumber = Math.max(1, rawDays + 1);
-          daySuffix = ` • Day ${dayNumber}`;
+          daySuffix = ` • Day ${dayNumber.toLocaleString()}`;
         }
 
         let header = `<b>${dateStr}, ${timeStr}${daySuffix}</b><br/>`;
@@ -1820,14 +1790,14 @@ const ChartBuilder = {
           const metricName =
             State.getMetricName().charAt(0).toUpperCase() +
             State.getMetricName().slice(1);
-          const value = Format.addCommas(this.y);
+          const value = this.y.toLocaleString();
           return `${header}${
             this.series.name
           }: ${value} ${metricName.toLowerCase()}`;
         } else {
           let body = '';
           for (const point of this.points) {
-            const value = Format.addCommas(point.y);
+            const value = point.y.toLocaleString();
             body += `${point.series.name}: ${value}<br/>`;
           }
           return header + body;
@@ -2507,12 +2477,9 @@ const Rankings = {
       const shouldHighlight = video.videoId === newest.videoId;
       if (shouldHighlight) item.classList.add('ranking-highlight');
 
-      const formattedMetric = Format.addCommas(video.metricAtPeriod);
-      const periodUnit = Format.pluralize(
-        State.rankingsSettings.timePeriod,
-        'hour'
-      );
-
+      const formattedMetric = video.metricAtPeriod.toLocaleString();
+      const periodUnit =
+        State.rankingsSettings.timePeriod === 1 ? 'hour' : 'hours';
       item.innerHTML = `
         <div class="ranking-position">${index + 1}</div>
         <img class="ranking-thumbnail" src="${video.thumbnail}" alt="${
@@ -2520,9 +2487,7 @@ const Rankings = {
       }" 
              onerror="this.style.display='none'" loading="lazy">
         <div class="ranking-info">
-          <div class="ranking-title">${Format.addCommasToTitle(
-            video.title
-          )}</div>
+          <div class="ranking-title">${video.title}</div>
         </div>
         <div class="ranking-views">
           ${formattedMetric}
@@ -2535,8 +2500,7 @@ const Rankings = {
       item.addEventListener('click', () => {
         Loader.loadVideo(video.videoId, State.currentChannel);
         const searchInput = Dom.get('searchInput');
-        if (searchInput)
-          searchInput.value = Format.addCommasToTitle(video.title);
+        if (searchInput) searchInput.value = video.title;
       });
 
       fragment.appendChild(item);
@@ -2552,17 +2516,16 @@ const Rankings = {
     const subtitle = document.querySelector('.rankings-subtitle');
     const formatTimePeriod = hours => {
       if (hours < 24) {
-        return `${hours} ${Format.pluralize(hours, 'Hour')}`;
+        return `${hours} ${hours === 1 ? 'Hour' : 'Hours'}`;
       }
       const days = Math.floor(hours / 24);
       const remainingHours = hours % 24;
       if (remainingHours === 0) {
-        return `${days} ${Format.pluralize(days, 'Day')}`;
+        return `${days} ${days === 1 ? 'Day' : 'Days'}`;
       }
-      return `${days} ${Format.pluralize(
-        days,
-        'Day'
-      )}, ${remainingHours} ${Format.pluralize(remainingHours, 'Hour')}`;
+      return `${days} ${days === 1 ? 'Day' : 'Days'}, ${remainingHours} ${
+        remainingHours === 1 ? 'Hour' : 'Hours'
+      }`;
     };
 
     if (subtitle) {
@@ -2842,15 +2805,15 @@ const Gains = {
       const currentGain = video.gains[periodKey];
       const previousGain = video.gains[previousKey] || 0;
       const change = currentGain - previousGain;
-      const percentage = Format.percentage(currentGain, previousGain);
+      const percentage = ((currentGain - previousGain) / previousGain) * 100;
 
       const isPositive = change >= 0;
       const arrow = isPositive ? '↑' : '↓';
       const changeClass = isPositive ? 'positive' : 'negative';
       const sign = isPositive ? '+' : '-';
 
-      const formattedCurrent = Format.addCommas(currentGain);
-      const formattedChange = Format.addCommas(Math.abs(change));
+      const formattedCurrent = currentGain.toLocaleString();
+      const formattedChange = Math.abs(change).toLocaleString();
       const formattedPercentage =
         percentage !== null ? `${sign}${Math.abs(percentage).toFixed(1)}%` : '';
 
@@ -2875,7 +2838,7 @@ const Gains = {
       }" 
              onerror="this.style.display='none'" loading="lazy">
         <div class="gains-info">
-          <div class="gains-title">${Format.addCommasToTitle(video.title)}</div>
+          <div class="gains-title">${video.title}</div>
         </div>
         <div class="gains-stats">
           <div class="gains-current">
@@ -2897,8 +2860,7 @@ const Gains = {
       item.addEventListener('click', () => {
         Loader.loadVideo(video.videoId, State.currentChannel);
         const searchInput = Dom.get('searchInput');
-        if (searchInput)
-          searchInput.value = Format.addCommasToTitle(video.title);
+        if (searchInput) searchInput.value = video.title;
       });
 
       fragment.appendChild(item);
@@ -3180,9 +3142,8 @@ const CustomDatePicker = {
         }
 
         this.startDateInput.value =
-          State.hourlyDateRange.start || Format.toISODate(start);
-        this.endDateInput.value =
-          State.hourlyDateRange.end || Format.toISODate(now);
+          State.hourlyDateRange.start || start.toISODate();
+        this.endDateInput.value = State.hourlyDateRange.end || now.toISODate();
       } else {
         if (State.customDateRange.start) {
           start = luxon.DateTime.fromISO(State.customDateRange.start, {
@@ -3193,12 +3154,11 @@ const CustomDatePicker = {
         }
 
         this.startDateInput.value =
-          State.customDateRange.start || Format.toISODate(start);
-        this.endDateInput.value =
-          State.customDateRange.end || Format.toISODate(now);
+          State.customDateRange.start || start.toISODate();
+        this.endDateInput.value = State.customDateRange.end || now.toISODate();
       }
 
-      this.endDateInput.max = Format.toISODate(now);
+      this.endDateInput.max = now.toISODate();
 
       const title = this.modal.querySelector('#modalTitle');
       if (title) {
@@ -3736,7 +3696,7 @@ const Search = {
 
     videos.forEach(video => {
       const item = Dom.create('div', 'dropdown-list-item');
-      item.textContent = Format.addCommasToTitle(video.title);
+      item.textContent = video.title;
       item.dataset.videoId = video.videoId;
       item.dataset.channel = channelId;
 
@@ -3913,7 +3873,7 @@ const Search = {
         (a, b) => new Date(b.uploadTime) - new Date(a.uploadTime)
       )[0];
       const input = Dom.get('searchInput');
-      if (input) input.value = Format.addCommasToTitle(recent.title);
+      if (input) input.value = recent.title;
       Loader.loadVideo(recent.videoId, 'mrbeast', false);
     } catch (error) {
       console.error('Failed to load default video:', error);
@@ -4015,10 +3975,10 @@ const Loader = {
 
     if (elements.videoLink && video.videoId && video.title) {
       elements.videoLink.href = `https://www.youtube.com/watch?v=${video.videoId}`;
-      elements.videoLink.textContent = Format.addCommasToTitle(video.title);
+      elements.videoLink.textContent = video.title;
 
       const input = Dom.get('searchInput');
-      if (input) input.value = Format.addCommasToTitle(video.title);
+      if (input) input.value = video.title;
     }
 
     if (elements.uploadDate && video.uploadTime) {
@@ -4364,8 +4324,8 @@ const Loader = {
           if (sevenDhAvailable && !State.hourlyData) {
             const endDt = luxon.DateTime.now().setZone('America/New_York');
             const startDt = endDt.minus({ days: Config.hourly.defaultDays });
-            const startISO = Format.toISODate(startDt);
-            const endISO = Format.toISODate(endDt);
+            const startISO = startDt.toISODate();
+            const endISO = endDt.toISODate();
 
             const doPrefetch = async () => {
               try {

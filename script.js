@@ -278,6 +278,7 @@ const State = {
   chart: null,
   rawData: {},
   processedData: {},
+  videoUploadTime: null,
   currentEntityId: 'mrbeast',
   currentChannel: 'mrbeast',
   selectedMetricIndex: 0,
@@ -400,6 +401,7 @@ const State = {
     this.processedData = {};
     this.isChartReady = false;
     this.pendingYAxisRange = null;
+    this.videoUploadTime = null;
     this.currentChartMode = Config.defaultChartMode;
     this.isGainsMode = false;
     this.isHourlyMode = false;
@@ -1480,6 +1482,7 @@ const ChartBuilder = {
           type: 'line',
           connectNulls: false,
           boostThreshold: 0,
+          dateISO: date.toISODate(),
         });
       }
     });
@@ -1774,30 +1777,60 @@ const ChartBuilder = {
         fontSize: State.isMobile() ? '12px' : '14px',
       },
       formatter: function () {
+        const isVideoContext = State.currentEntityId !== State.currentChannel;
+
+        let dt;
+        if (isHourly) {
+          const seriesDateISO = this.series?.userOptions?.dateISO;
+          if (seriesDateISO) {
+            dt = luxon.DateTime.fromISO(seriesDateISO, {
+              zone: 'America/New_York',
+            }).set({ hour: this.x });
+          } else {
+            dt = luxon.DateTime.now().setZone('America/New_York').set({
+              hour: this.x,
+              minute: 0,
+              second: 0,
+              millisecond: 0,
+            });
+          }
+        } else {
+          dt = luxon.DateTime.fromMillis(this.x, {
+            zone: 'America/New_York',
+          });
+        }
+
+        const dateStr = dt.toFormat('MMM d, yyyy');
+        const timeStr = dt.toFormat('ha').toLowerCase();
+
+        let daySuffix = '';
+        if (isVideoContext && State.videoUploadTime) {
+          const uploadStart = luxon.DateTime.fromISO(State.videoUploadTime, {
+            zone: 'America/New_York',
+          }).startOf('day');
+          const pointStart = dt.startOf('day');
+          const rawDays = Math.floor(pointStart.diff(uploadStart, 'days').days);
+          const dayNumber = Math.max(1, rawDays + 1);
+          daySuffix = ` • Day ${dayNumber}`;
+        }
+
+        let header = `<b>${dateStr}, ${timeStr}${daySuffix}</b><br/>`;
+
         if (isHourly) {
           const metricName =
             State.getMetricName().charAt(0).toUpperCase() +
             State.getMetricName().slice(1);
-          const hour = this.x % 12 || 12;
-          const period = this.x < 12 ? 'am' : 'pm';
-          return `
-            <b>${this.series.name}</b><br/>
-            ${hour}${period}: ${Format.addCommas(
-            this.y
-          )} ${metricName.toLowerCase()}
-          `;
+          const value = Format.addCommas(this.y);
+          return `${header}${
+            this.series.name
+          }: ${value} ${metricName.toLowerCase()}`;
         } else {
-          const dt = luxon.DateTime.fromMillis(this.x, {
-            zone: 'America/New_York',
-          });
-          const date = dt.toFormat('yyyy-MM-dd');
-          const time = dt.toFormat('HH:mm:ss');
-          let tooltip = `<b>${date} ${time}</b><br>`;
+          let body = '';
           for (const point of this.points) {
-            const value = point.y.toLocaleString();
-            tooltip += `${point.series.name}: ${value}<br>`;
+            const value = Format.addCommas(point.y);
+            body += `${point.series.name}: ${value}<br/>`;
           }
-          return tooltip;
+          return header + body;
         }
       },
       shared: !isHourly,
@@ -4289,6 +4322,8 @@ const Loader = {
         }
 
         if (video?.stats && Array.isArray(video.stats)) {
+          State.videoUploadTime = video.uploadTime || null;
+
           this.updateVideoInfo(video);
 
           const filtered = video.stats.filter(

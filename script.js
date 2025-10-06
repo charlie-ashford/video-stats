@@ -2785,7 +2785,10 @@ const Gains = {
       const currentGain = video.gains[periodKey];
       const previousGain = video.gains[previousKey] || 0;
       const change = currentGain - previousGain;
-      const percentage = ((currentGain - previousGain) / previousGain) * 100;
+      const percentage =
+        previousGain && previousGain !== 0
+          ? ((currentGain - previousGain) / previousGain) * 100
+          : null;
 
       const isPositive = change >= 0;
       const arrow = isPositive ? '↑' : '↓';

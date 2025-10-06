@@ -997,7 +997,7 @@ const Dom = {
   show(id) {
     const el = this.get(id);
     if (el) {
-      if (id === 'videoInfoCard') {
+      if (id === 'videoInfoCard' || id === 'uploadCountCard') {
         el.style.display = 'flex';
       } else {
         el.style.display = 'block';

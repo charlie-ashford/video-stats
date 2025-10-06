@@ -155,20 +155,31 @@ const Config = {
 const Net = {
   inflight: new Map(),
   cache: new Map(),
-  defaultTtl: 5 * 60 * 1000,
+  defaultTtl: 10 * 60 * 1000,
 
-  async fetchJson(url, options = {}, ttl = null) {
+  getTenMinuteAlignedExpiryMs(minMs = 10000) {
+    const nowMs = Date.now();
+    const nowEst = luxon.DateTime.now().setZone('America/New_York');
+    const remainder = nowEst.minute % 10;
+    const add = remainder === 0 ? 10 : 10 - remainder;
+    const nextSlot = nowEst.plus({ minutes: add }).startOf('minute');
+    const targetMs = nextSlot.toMillis();
+    return Math.max(targetMs, nowMs + minMs);
+  },
+
+  async fetchJson(url, options = {}, _ttlIgnored = null) {
     const now = Date.now();
-    const effectiveTtl = typeof ttl === 'number' ? ttl : this.defaultTtl;
 
     const cached = this.cache.get(url);
-    if (cached && now - cached.time < effectiveTtl) {
+    if (cached && now < cached.expiry) {
       return cached.data;
     }
 
     if (this.inflight.has(url)) {
       return this.inflight.get(url);
     }
+
+    const cachedBeforeFetch = cached;
 
     const p = fetch(url, options)
       .then(res => {
@@ -178,10 +189,14 @@ const Net = {
         return res.json();
       })
       .then(json => {
-        this.cache.set(url, { time: now, data: json });
+        const expiry = this.getTenMinuteAlignedExpiryMs();
+        this.cache.set(url, { expiry, data: json });
         return json;
       })
       .catch(err => {
+        if (cachedBeforeFetch && cachedBeforeFetch.data) {
+          return cachedBeforeFetch.data;
+        }
         throw err;
       })
       .finally(() => {
@@ -194,6 +209,17 @@ const Net = {
 
   invalidate(url) {
     this.cache.delete(url);
+  },
+
+  invalidatePrefix(prefix) {
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) this.cache.delete(key);
+    }
+  },
+
+  clear() {
+    this.cache.clear();
+    this.inflight.clear();
   },
 };
 
@@ -2321,23 +2347,14 @@ const Rankings = {
 
   async fetch(channelId, filter = 'long') {
     const cacheKey = `${channelId}-${filter}`;
-    const currentTime = Date.now();
-
-    if (
-      State.cachedRankings.has(cacheKey) &&
-      currentTime - State.lastFetchTime < 300000
-    ) {
-      return State.cachedRankings.get(cacheKey);
-    }
-
     const url = `${Config.api.rankings}?channel=${channelId}&filter=${filter}`;
 
     try {
-      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
-      if (!data.videos || !Array.isArray(data.videos)) return [];
-
+      const data = await Net.fetchJson(url, {}, null);
+      if (!data.videos || !Array.isArray(data.videos)) {
+        return State.cachedRankings.get(cacheKey) || [];
+      }
       State.cachedRankings.set(cacheKey, data.videos);
-      State.lastFetchTime = currentTime;
       return data.videos;
     } catch (error) {
       console.error('Rankings fetch error:', error);
@@ -2680,8 +2697,7 @@ const Rankings = {
 
         State.saveSettings();
       }
-    } catch (error) {
-    }
+    } catch (error) {}
   },
 
   applySettings() {
@@ -2729,25 +2745,17 @@ const Gains = {
 
   async fetch(channelId, metric, filter, period) {
     const cacheKey = `${channelId}-${metric}-${filter}-${period}`;
-    const currentTime = Date.now();
-
-    if (
-      this.allVideosCache.has(cacheKey) &&
-      currentTime - State.lastFetchTime < 300000
-    ) {
-      return this.allVideosCache.get(cacheKey);
-    }
-
     const url = `${Config.api.gains}?channel=${channelId}&metric=${metric}&filter=${filter}`;
 
     try {
-      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
-      if (!data.videos || !Array.isArray(data.videos)) return [];
-
+      const data = await Net.fetchJson(url, {}, null);
+      if (!data.videos || !Array.isArray(data.videos)) {
+        return this.allVideosCache.get(cacheKey) || [];
+      }
       this.allVideosCache.set(cacheKey, data.videos);
-      State.lastFetchTime = currentTime;
       return data.videos;
     } catch (error) {
+      console.error('Gains fetch error:', error);
       return this.allVideosCache.get(cacheKey) || [];
     }
   },

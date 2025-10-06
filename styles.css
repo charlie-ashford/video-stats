@@ -1035,7 +1035,7 @@ header h1 {
   cursor: not-allowed;
 }
 
-.hourly-date-picker-button {
+.custom-date-picker-button {
   position: absolute;
   top: 1.5rem;
   left: 1.5rem;
@@ -1055,17 +1055,17 @@ header h1 {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-.hourly-date-picker-button.show {
-  display: flex;
+.custom-date-picker-button.show {
+  display: flex !important;
 }
 
-.hourly-date-picker-button:hover {
+.custom-date-picker-button:hover {
   background-color: var(--hover-card-background);
   border-color: var(--hover-border-color);
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
 }
 
-.hourly-date-picker-button i {
+.custom-date-picker-button i {
   font-size: 1.1rem;
 }
 
@@ -1574,14 +1574,14 @@ footer .fa-heart {
     margin: 0;
   }
 
-  .hourly-date-picker-button {
+  .custom-date-picker-button {
     top: 4rem;
     left: 0.75rem;
     width: 36px;
     height: 36px;
   }
 
-  .hourly-date-picker-button i {
+  .custom-date-picker-button i {
     font-size: 1rem;
   }
 
@@ -1877,7 +1877,7 @@ footer .fa-heart {
     padding: 0.35rem 0.65rem;
   }
 
-  .hourly-date-picker-button {
+  .custom-date-picker-button {
     top: 4.5rem;
     width: 34px;
     height: 34px;
@@ -2149,5 +2149,178 @@ footer .fa-heart {
 
   .control-button {
     min-height: 44px;
+  }
+}
+
+.chart-mode-dropdown {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 10;
+}
+
+.chart-mode-button {
+  background-color: var(--card-background-color);
+  color: var(--text-color);
+  border: 1.5px solid var(--border-color);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: var(--font-weight-normal);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  opacity: 0.9;
+  min-width: 140px;
+  justify-content: space-between;
+}
+
+.chart-mode-button:hover {
+  background-color: var(--hover-card-background);
+  border-color: var(--hover-border-color);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+  opacity: 1;
+}
+
+.chart-mode-arrow {
+  font-size: 0.8rem;
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+}
+
+.chart-mode-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+.chart-mode-options {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background-color: var(--card-background-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 160px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all 0.3s ease;
+}
+
+.chart-mode-options.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.chart-mode-option {
+  padding: 0.75rem 1rem;
+  color: var(--text-color);
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.3s ease;
+  white-space: nowrap;
+}
+
+.chart-mode-option:last-child {
+  border-bottom: none;
+}
+
+.chart-mode-option:hover {
+  background-color: var(--hover-background-color);
+  color: var(--hover-text-color);
+}
+
+.chart-gains-toggle {
+  position: absolute;
+  top: 1.5rem;
+  right: 11rem;
+  background-color: var(--card-background-color);
+  color: var(--text-color);
+  border: 1.5px solid var(--border-color);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: var(--font-weight-normal);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.3s ease;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.chart-gains-toggle:hover {
+  background-color: var(--hover-card-background);
+  border-color: var(--hover-border-color);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+  opacity: 1;
+}
+
+.chart-gains-toggle.active {
+  background-color: var(--primary-color);
+  color: #ffffff;
+  border-color: var(--primary-color);
+  opacity: 1;
+}
+
+.chart-gains-toggle i {
+  font-size: 0.95rem;
+}
+
+@media (max-width: 1024px) {
+  .chart-gains-toggle {
+    right: 9rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .chart-mode-dropdown {
+    top: 1rem;
+    right: 1rem;
+  }
+
+  .chart-mode-button {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+    min-width: 120px;
+  }
+
+  .chart-gains-toggle {
+    top: 4rem;
+    right: 1rem;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+  }
+
+  .chart-mode-options {
+    min-width: 140px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chart-mode-button {
+    min-width: 100px;
+    padding: 0.35rem 0.7rem;
+  }
+
+  .chart-mode-options {
+    min-width: 120px;
+  }
+
+  .chart-gains-toggle span {
+    display: none;
+  }
+
+  .chart-gains-toggle {
+    padding: 0.35rem 0.7rem;
   }
 }

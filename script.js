@@ -105,6 +105,48 @@ const Config = {
     minCount: 3,
     maxCount: 50,
   },
+
+  chartModes: {
+    all: {
+      label: 'All Data',
+      period: 'all',
+      dataPoints: 'daily',
+      gains: false,
+      customizable: true,
+    },
+    '90d': {
+      label: 'Past 90 Days',
+      period: 90,
+      dataPoints: 'daily',
+      gains: false,
+    },
+    '60d': {
+      label: 'Past 60 Days',
+      period: 60,
+      dataPoints: 'hourly',
+      gains: false,
+    },
+    '30d': {
+      label: 'Past 30 Days',
+      period: 30,
+      dataPoints: 'hourly',
+      gains: false,
+    },
+    '7d': {
+      label: 'Past 7 Days',
+      period: 7,
+      dataPoints: 'hourly',
+      gains: false,
+    },
+    '7dh': {
+      label: '7 Day Hourly',
+      period: 7,
+      dataPoints: 'hourly-chart',
+      gains: false,
+      customizable: true,
+    },
+  },
+  defaultChartMode: '30d',
   hourly: {
     defaultDays: 7,
   },
@@ -217,12 +259,20 @@ const State = {
   pendingYAxisRange: null,
   isRankingsView: false,
   isGainsView: false,
+  currentChartMode: Config.defaultChartMode,
+  isGainsMode: false,
   isHourlyMode: false,
   hourlyData: null,
+  customDateRangeLabel: null,
   hourlyDateRange: {
     start: null,
     end: null,
   },
+  customDateRange: {
+    start: null,
+    end: null,
+  },
+  chartModeData: new Map(),
   rankingsSettings: {
     videoCount: Config.rankings.defaultCount,
     timePeriod: Config.rankings.defaultHours,
@@ -240,6 +290,7 @@ const State = {
   lastFetchTime: 0,
 
   _currentLoadKey: null,
+  _dailyCache: null,
   _loadedKey: null,
   _loadPromises: new Map(),
 
@@ -296,14 +347,555 @@ const State = {
     return this.selectedMetricIndex < 3;
   },
 
+  getChartConfig() {
+    return (
+      Config.chartModes[this.currentChartMode] ||
+      Config.chartModes[Config.defaultChartMode]
+    );
+  },
+
+  shouldUseHourlyData() {
+    const config = this.getChartConfig();
+    return config.dataPoints === 'hourly';
+  },
+
+  shouldUseDailyData() {
+    const config = this.getChartConfig();
+    return config.dataPoints === 'daily';
+  },
+
+  shouldUseHourlyChart() {
+    const config = this.getChartConfig();
+    return config.dataPoints === 'hourly-chart';
+  },
+
   reset() {
     this.rawData = {};
     this.processedData = {};
     this.isChartReady = false;
     this.pendingYAxisRange = null;
+    this.currentChartMode = Config.defaultChartMode;
+    this.isGainsMode = false;
     this.isHourlyMode = false;
     this.hourlyData = null;
     this.hourlyDateRange = { start: null, end: null };
+    this.customDateRange = { start: null, end: null };
+    this.customDateRangeLabel = null;
+    this.chartModeData = new Map();
+    this._dailyCache = null;
+  },
+};
+
+const ChartModeDropdown = {
+  dropdown: null,
+  gainsToggle: null,
+  _lastAvailableModes: null,
+  _isRefreshing: false,
+
+  hasRenderableChart() {
+    return (
+      !State.isRankingsView &&
+      !State.isGainsView &&
+      !!State.chart &&
+      (!State.isHourlyMode
+        ? (State.processedData?.timestamps?.length || 0) > 0
+        : !!State.hourlyData?.dates?.length)
+    );
+  },
+
+  create() {
+    if (this.dropdown) return this.dropdown;
+
+    const chartContainer = document.querySelector('.chart-container');
+    if (!chartContainer) return null;
+
+    this.dropdown = Dom.create('div', 'chart-mode-dropdown');
+
+    this.dropdown.innerHTML = `
+    <button class="chart-mode-button" id="chartModeButton">
+      <span class="chart-mode-text"></span>
+      <i class="fas fa-chevron-down chart-mode-arrow"></i>
+    </button>
+    <div class="chart-mode-options" id="chartModeOptions">
+      <!-- options injected dynamically -->
+    </div>
+  `;
+    this.dropdown.style.display = 'none';
+
+    this.gainsToggle = Dom.create('button', 'chart-gains-toggle');
+    this.gainsToggle.innerHTML = `
+    <i class="fas fa-chart-line"></i>
+    <span>Daily Gains</span>
+  `;
+    this.gainsToggle.style.display = 'none';
+
+    const title = chartContainer.querySelector('#videoChart');
+    if (title && title.parentElement) {
+      title.parentElement.insertBefore(this.dropdown, title);
+      title.parentElement.insertBefore(this.gainsToggle, title);
+    }
+
+    const availableModes = this.getAvailableChartModes();
+    this.renderOptions(availableModes);
+    this.renderSelectedLabel();
+    this.ensureModeSupported();
+
+    this.bindEvents();
+    return this.dropdown;
+  },
+
+  getAvailableChartModes() {
+    const isChannelContext = State.currentEntityId === State.currentChannel;
+    const isCommentsMetric = State.getMetricName() === 'comments';
+
+    const modes = { ...Config.chartModes };
+
+    if (isChannelContext || isCommentsMetric) {
+      delete modes['7dh'];
+    }
+
+    return modes;
+  },
+
+  bindEvents() {
+    if (!this.dropdown || !this.gainsToggle) return;
+
+    const button = this.dropdown.querySelector('#chartModeButton');
+    const options = this.dropdown.querySelector('#chartModeOptions');
+
+    button.addEventListener('click', e => {
+      e.stopPropagation();
+      options.classList.toggle('show');
+      button.querySelector('.chart-mode-arrow').classList.toggle('rotated');
+    });
+
+    document.addEventListener('click', e => {
+      if (!this.dropdown.contains(e.target)) {
+        options.classList.remove('show');
+        button.querySelector('.chart-mode-arrow').classList.remove('rotated');
+      }
+    });
+
+    options.addEventListener('click', e => {
+      const option = e.target.closest('.chart-mode-option');
+      if (!option) return;
+
+      const available = this.getAvailableChartModes();
+      const mode = option.dataset.mode;
+
+      if (!available[mode]) return;
+      if (mode === State.currentChartMode) return;
+
+      this.selectMode(mode);
+      options.classList.remove('show');
+      button.querySelector('.chart-mode-arrow').classList.remove('rotated');
+    });
+
+    this.gainsToggle.addEventListener('click', () => {
+      this.toggleGainsMode();
+    });
+  },
+
+  renderOptions(availableModes) {
+    if (!this.dropdown) return;
+    const optionsEl = this.dropdown.querySelector('#chartModeOptions');
+    if (!optionsEl) return;
+
+    const markup = Object.entries(availableModes)
+      .map(
+        ([key, config]) => `
+        <div class="chart-mode-option" data-mode="${key}">
+          ${config.label}
+        </div>
+      `
+      )
+      .join('');
+    optionsEl.innerHTML = markup;
+    this._lastAvailableModes = JSON.stringify(Object.keys(availableModes));
+  },
+
+  renderSelectedLabel() {
+    if (!this.dropdown) return;
+    const txt = this.dropdown.querySelector('.chart-mode-text');
+    const mode = State.currentChartMode;
+    const cfg =
+      Config.chartModes[mode] || Config.chartModes[Config.defaultChartMode];
+    if (txt) txt.textContent = cfg.label;
+  },
+
+  async ensureModeSupported() {
+    const available = this.getAvailableChartModes();
+    if (available[State.currentChartMode]) {
+      this.renderSelectedLabel();
+      this.updateGainsToggleVisibility();
+      return false;
+    }
+
+    let fallback = Config.defaultChartMode;
+    if (!available[fallback]) {
+      const keys = Object.keys(available);
+      fallback = keys.length ? keys[0] : null;
+    }
+
+    if (!fallback) {
+      if (this.dropdown) this.dropdown.style.display = 'none';
+      State.isHourlyMode = false;
+      State.isGainsMode = false;
+      return false;
+    }
+
+    await this.selectMode(fallback);
+    return true;
+  },
+
+  async refresh() {
+    if (!this.dropdown) this.create();
+    if (!this.dropdown) return false;
+    if (this._isRefreshing) return false;
+
+    this._isRefreshing = true;
+
+    const availableNow = this.getAvailableChartModes();
+    const currentSig = JSON.stringify(Object.keys(availableNow));
+    const changed = currentSig !== this._lastAvailableModes;
+
+    if (changed) {
+      this.renderOptions(availableNow);
+    }
+
+    const didChangeMode = await this.ensureModeSupported();
+
+    this.updateGainsToggleVisibility();
+
+    if (this.dropdown) {
+      this.dropdown.style.display = this.hasRenderableChart()
+        ? 'block'
+        : 'none';
+    }
+
+    this._isRefreshing = false;
+    return didChangeMode;
+  },
+
+  async selectMode(mode) {
+    State.customDateRange = { start: null, end: null };
+    State.customDateRangeLabel = null;
+
+    State.currentChartMode = mode;
+    State.isGainsMode = false;
+    State.isHourlyMode = false;
+    State.hourlyData = null;
+
+    this.renderSelectedLabel();
+
+    this.gainsToggle.classList.remove('active');
+    this.gainsToggle.innerHTML = `
+      <i class="fas fa-chart-line"></i>
+      <span>Daily Gains</span>
+    `;
+
+    this.updateGainsToggleVisibility();
+
+    const config = Config.chartModes[mode];
+
+    if (config.dataPoints === 'hourly-chart') {
+      await this.loadHourlyChart();
+    } else {
+      await this.loadAndDisplayData();
+    }
+  },
+
+  async loadHourlyChart() {
+    const container = Dom.get('videoChart');
+    if (container) {
+      container.innerHTML =
+        '<div style="text-align:center;padding:20px;">Loading hourly chart data...</div>';
+    }
+
+    try {
+      if (!State.hourlyData) {
+        this.setDefaultDates();
+        const data = await this.fetchHourlyData(
+          State.currentEntityId,
+          State.currentChannel,
+          State.hourlyDateRange.start,
+          State.hourlyDateRange.end
+        );
+        State.hourlyData = data;
+      }
+
+      State.isHourlyMode = true;
+      await Charts.create();
+    } catch (error) {
+      console.error('Error loading hourly chart:', error);
+      State.isHourlyMode = false;
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:20px;color:red;">Error loading hourly chart. This video may not have enough data yet.</div>';
+      }
+    }
+  },
+
+  setDefaultDates() {
+    const end = luxon.DateTime.now().setZone('America/New_York');
+    const start = end.minus({ days: Config.hourly.defaultDays });
+
+    State.hourlyDateRange.start = Format.toISODate(start);
+    State.hourlyDateRange.end = Format.toISODate(end);
+  },
+
+  async fetchHourlyData(videoId, channel, startDate, endDate) {
+    const url = Config.api.hourly(videoId, channel, startDate, endDate);
+    try {
+      return await Net.fetchJson(url, {}, 2 * 60 * 1000);
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async toggleGainsMode() {
+    State.isGainsMode = !State.isGainsMode;
+
+    this.gainsToggle.classList.toggle('active', State.isGainsMode);
+
+    if (State.isGainsMode) {
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-chart-area"></i>
+        <span>Total Data</span>
+      `;
+    } else {
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-chart-line"></i>
+        <span>Daily Gains</span>
+      `;
+    }
+
+    await Charts.create();
+  },
+
+  updateGainsToggleVisibility() {
+    const config = State.getChartConfig();
+    const hasRenderable = this.hasRenderableChart();
+
+    const canShowGains =
+      !State.isRankingsView &&
+      !State.isGainsView &&
+      config.dataPoints !== 'hourly-chart' &&
+      hasRenderable;
+
+    if (canShowGains) {
+      this.gainsToggle.style.display = 'flex';
+    } else {
+      this.gainsToggle.style.display = 'none';
+      State.isGainsMode = false;
+      this.gainsToggle.classList.remove('active');
+      this.gainsToggle.innerHTML = `
+	      <i class="fas fa-chart-line"></i>
+	      <span>Daily Gains</span>
+	    `;
+    }
+
+    const shouldShowDatePicker =
+      config.customizable &&
+      !State.isRankingsView &&
+      !State.isGainsView &&
+      hasRenderable;
+
+    if (shouldShowDatePicker) {
+      if (!CustomDatePicker.datePickerButton) {
+        CustomDatePicker.createDatePickerButton();
+      }
+      if (CustomDatePicker.datePickerButton) {
+        CustomDatePicker.datePickerButton.classList.add('show');
+        CustomDatePicker.datePickerButton.style.display = 'flex';
+      }
+    } else {
+      if (CustomDatePicker.datePickerButton) {
+        CustomDatePicker.datePickerButton.classList.remove('show');
+        CustomDatePicker.datePickerButton.style.display = 'none';
+      }
+    }
+  },
+
+  async loadAndDisplayData() {
+    const container = Dom.get('videoChart');
+    if (container) {
+      container.innerHTML =
+        '<div style="text-align:center;padding:20px;">Loading chart data...</div>';
+    }
+
+    try {
+      const config = State.getChartConfig();
+
+      const filterByDateRange = (arr, startISO, endISO) => {
+        const startDate = luxon.DateTime.fromISO(startISO, {
+          zone: 'America/New_York',
+        }).startOf('day');
+        const endDate = luxon.DateTime.fromISO(endISO, {
+          zone: 'America/New_York',
+        }).endOf('day');
+        return arr.filter(entry => {
+          const entryTime = entry.timestamp || entry.time;
+          if (!entryTime) return false;
+          const entryDate = luxon.DateTime.fromISO(entryTime, {
+            zone: 'America/New_York',
+          });
+          return entryDate >= startDate && entryDate <= endDate;
+        });
+      };
+
+      const haveCustom =
+        State.customDateRange.start && State.customDateRange.end;
+      const useTimestamp = !!State.rawData?.[0]?.timestamp;
+
+      if (haveCustom) {
+        if (config.dataPoints === 'hourly') {
+          const filtered = filterByDateRange(
+            Array.isArray(State.rawData) ? State.rawData : [],
+            State.customDateRange.start,
+            State.customDateRange.end
+          );
+          if (filtered.length === 0) {
+            throw new Error('No data available for the selected date range');
+          }
+          State.processedData = DataProcessor.transform(filtered);
+        } else {
+          const baseDaily =
+            Array.isArray(State._dailyCache) && State._dailyCache.length
+              ? State._dailyCache
+              : DataProcessor.processDaily(State.rawData, useTimestamp);
+
+          const filteredDaily = filterByDateRange(
+            baseDaily,
+            State.customDateRange.start,
+            State.customDateRange.end
+          );
+          if (filteredDaily.length === 0) {
+            throw new Error('No data available for the selected date range');
+          }
+          State.processedData = DataProcessor.transform(filteredDaily);
+        }
+      } else if (
+        config.period !== 'all' &&
+        typeof config.period === 'number' &&
+        Array.isArray(State.rawData)
+      ) {
+        const cutoffDate = luxon.DateTime.now()
+          .setZone('America/New_York')
+          .startOf('day')
+          .minus({ days: config.period });
+
+        if (config.dataPoints === 'hourly') {
+          const recent = State.rawData.filter(entry => {
+            const iso = entry.timestamp || entry.time;
+            if (!iso) return false;
+            const dt = luxon.DateTime.fromISO(iso, {
+              zone: 'America/New_York',
+            });
+            return dt >= cutoffDate;
+          });
+          State.processedData = DataProcessor.transform(recent);
+        } else {
+          const baseDaily =
+            Array.isArray(State._dailyCache) && State._dailyCache.length
+              ? State._dailyCache
+              : DataProcessor.processDaily(State.rawData, useTimestamp);
+
+          const recentDaily = baseDaily.filter(entry => {
+            const iso = entry.timestamp || entry.time;
+            const dt = luxon.DateTime.fromISO(iso, {
+              zone: 'America/New_York',
+            });
+            return dt >= cutoffDate;
+          });
+          State.processedData = DataProcessor.transform(recentDaily);
+        }
+      } else {
+        if (config.dataPoints === 'hourly') {
+          State.processedData = DataProcessor.transform(State.rawData);
+        } else {
+          const baseDaily =
+            Array.isArray(State._dailyCache) && State._dailyCache.length
+              ? State._dailyCache
+              : DataProcessor.processDaily(State.rawData, useTimestamp);
+          State.processedData = DataProcessor.transform(baseDaily);
+        }
+      }
+
+      await Charts.create();
+    } catch (error) {
+      console.error('Error loading chart data:', error);
+      if (container) {
+        container.innerHTML = `<div style="text-align:center;padding:20px;color:red;">Error loading chart data: ${error.message}</div>`;
+      }
+    }
+  },
+
+  show() {
+    if (State.isRankingsView || State.isGainsView) {
+      this.hide();
+      return;
+    }
+
+    if (!this.dropdown) {
+      this.create();
+    }
+
+    if (this.dropdown) {
+      this.dropdown.style.display = 'block';
+    }
+
+    this.refresh();
+
+    this.updateGainsToggleVisibility();
+  },
+
+  hide() {
+    if (this.dropdown) {
+      this.dropdown.style.display = 'none';
+    }
+    if (this.gainsToggle) {
+      this.gainsToggle.style.display = 'none';
+    }
+  },
+
+  reset() {
+    State.currentChartMode = Config.defaultChartMode;
+    State.isGainsMode = false;
+    State.isHourlyMode = false;
+    State.hourlyData = null;
+    State.hourlyDateRange = { start: null, end: null };
+    State.customDateRange = { start: null, end: null };
+    State.customDateRangeLabel = null;
+
+    this._lastAvailableModes = null;
+
+    const availableModes = this.getAvailableChartModes();
+    if (!availableModes[State.currentChartMode]) {
+      State.currentChartMode = Config.defaultChartMode;
+    }
+
+    if (this.dropdown) {
+      this.renderSelectedLabel();
+    }
+
+    if (this.gainsToggle) {
+      this.gainsToggle.classList.remove('active');
+      this.gainsToggle.innerHTML = `
+	      <i class="fas fa-chart-line"></i>
+	      <span>Daily Gains</span>
+	    `;
+    }
+
+    CustomDatePicker.reset();
+
+    this.refresh();
+
+    if (this.dropdown) {
+      this.dropdown.style.display = this.hasRenderableChart()
+        ? 'block'
+        : 'none';
+    }
   },
 };
 
@@ -463,7 +1055,7 @@ const Format = {
   },
 
   toISODate(luxonDateTime) {
-    return luxonDateTime.toFormat('yyyy-MM-dd');
+    return luxonDateTime.setZone('America/New_York').toFormat('yyyy-MM-dd');
   },
 };
 
@@ -546,17 +1138,92 @@ const DataProcessor = {
     return Math.max(0, Math.floor(last.diff(first, 'days').days));
   },
 
+  processGains(timestamps, values) {
+    if (
+      !timestamps ||
+      !values ||
+      timestamps.length !== values.length ||
+      timestamps.length < 2
+    ) {
+      return [];
+    }
+
+    const gains = [];
+    for (let i = 1; i < timestamps.length; i++) {
+      const gain = values[i] - values[i - 1];
+      gains.push([timestamps[i], gain]);
+    }
+
+    return gains;
+  },
+
+  processDailyGains(timestamps, values) {
+    if (
+      !timestamps ||
+      !values ||
+      timestamps.length !== values.length ||
+      timestamps.length < 2
+    ) {
+      return [];
+    }
+
+    const rawDataPoints = timestamps.map((ts, i) => ({
+      timestamp: luxon.DateTime.fromMillis(ts, {
+        zone: 'America/New_York',
+      }).toISO(),
+      views: State.processedData.series.views[i],
+      likes: State.processedData.series.likes[i],
+      comments: State.processedData.series.comments[i],
+    }));
+
+    const dailyData = this.processDaily(rawDataPoints, true);
+
+    const gains = [];
+
+    for (let i = 1; i < dailyData.length; i++) {
+      const current = dailyData[i];
+      const previous = dailyData[i - 1];
+
+      const metricKey = State.getMetricName();
+      const gain = current[metricKey] - (previous[metricKey] || 0);
+
+      const timestamp = luxon.DateTime.fromISO(current.timestamp, {
+        zone: 'America/New_York',
+      }).toMillis();
+
+      gains.push([timestamp, gain]);
+    }
+
+    return gains;
+  },
+
+  downsamplePairs(points) {
+    const max = State.getMaxDataPoints();
+    if (!Array.isArray(points) || points.length <= max) return points || [];
+    const step = Math.floor(points.length / max) || 1;
+    const result = [];
+    for (let i = 0; i < points.length; i += step) {
+      result.push(points[i]);
+    }
+    const last = points[points.length - 1];
+    const lastIn = result[result.length - 1];
+    if (!lastIn || lastIn[0] !== last[0]) result.push(last);
+    return result;
+  },
+
   seriesPointsForChart(metricKey) {
     const values = State.processedData.series[metricKey];
     const ts = State.processedData.timestamps;
     if (!values || !ts || !ts.length || values.length !== ts.length) return [];
     const spanDays = this.spanInDays(ts);
 
+    let points;
     if (spanDays > 90) {
-      return this.dailyFirstPoint(ts, values);
+      points = this.dailyFirstPoint(ts, values);
+    } else {
+      points = ts.map((t, i) => [t, values[i]]);
     }
-
-    return ts.map((t, i) => [t, values[i]]);
+    return this.downsamplePairs(points);
   },
 
   calcYRange(seriesData, xMin = null, xMax = null) {
@@ -594,6 +1261,22 @@ const DataProcessor = {
 
   getCurrentSeries() {
     const metric = State.getMetricName();
+
+    if (State.isGainsMode && metric !== 'uploads') {
+      const values = State.processedData.series[metric];
+      const timestamps = State.processedData.timestamps;
+
+      const config = State.getChartConfig();
+      if (
+        config.dataPoints === 'hourly' ||
+        config.dataPoints === 'hourly-chart'
+      ) {
+        return this.processDailyGains(timestamps, values);
+      } else {
+        return this.processGains(timestamps, values);
+      }
+    }
+
     return this.seriesPointsForChart(metric);
   },
 
@@ -676,10 +1359,29 @@ const ChartBuilder = {
     }
 
     return configs.map(config => {
-      const seriesData = DataProcessor.seriesPointsForChart(config.key);
+      let seriesData;
+      let seriesName = config.name;
+
+      if (State.isGainsMode && config.key !== 'uploads') {
+        const values = State.processedData.series[config.key];
+        const timestamps = State.processedData.timestamps;
+
+        const chartConfig = State.getChartConfig();
+        if (
+          chartConfig.dataPoints === 'hourly' ||
+          chartConfig.dataPoints === 'hourly-chart'
+        ) {
+          seriesData = DataProcessor.processDailyGains(timestamps, values);
+        } else {
+          seriesData = DataProcessor.processGains(timestamps, values);
+        }
+        seriesName = `Daily ${config.name} Gains`;
+      } else {
+        seriesData = DataProcessor.seriesPointsForChart(config.key);
+      }
 
       return {
-        name: config.name,
+        name: seriesName,
         data: seriesData,
         visible: config.visible,
         color: Config.colors[config.key],
@@ -969,12 +1671,19 @@ const ChartBuilder = {
       State.selectedMetricIndex === 3 &&
       State.processedData.series.uploads?.length > 0;
 
-    const metricName = isHourly
-      ? `Hourly ${
-          State.getMetricName().charAt(0).toUpperCase() +
-          State.getMetricName().slice(1)
-        }`
-      : 'Count';
+    const metric =
+      State.getMetricName().charAt(0).toUpperCase() +
+      State.getMetricName().slice(1);
+
+    let metricName = `${metric}`;
+    if (isHourly) {
+      metricName = `Hourly ${
+        State.getMetricName().charAt(0).toUpperCase() +
+        State.getMetricName().slice(1)
+      }`;
+    } else if (State.isGainsMode && State.getMetricName() !== 'uploads') {
+      metricName = `Daily ${metric} Gains`;
+    }
 
     const config = {
       title: {
@@ -1081,7 +1790,7 @@ const Charts = {
     }
 
     if (!State.processedData.timestamps?.length) return false;
-    const currentSeries = State.processedData.series[State.getMetricName()];
+    const currentSeries = DataProcessor.getCurrentSeries();
     return currentSeries && currentSeries.length > 0;
   },
 
@@ -1163,12 +1872,33 @@ const Charts = {
 
     if (!State.isChartReady) State.pendingYAxisRange = yRange;
 
-    const chartTitle = isHourly
-      ? `Hourly ${
-          State.getMetricName().charAt(0).toUpperCase() +
-          State.getMetricName().slice(1)
-        } Gains`
-      : seriesConfig[State.selectedMetricIndex]?.name || 'Chart';
+    let chartTitle;
+    if (isHourly) {
+      const baseTitle = `Hourly ${
+        State.getMetricName().charAt(0).toUpperCase() +
+        State.getMetricName().slice(1)
+      } Gains`;
+      chartTitle = State.customDateRangeLabel
+        ? `${baseTitle} - ${State.customDateRangeLabel}`
+        : baseTitle;
+    } else if (State.isGainsMode) {
+      const metricName =
+        State.getMetricName().charAt(0).toUpperCase() +
+        State.getMetricName().slice(1);
+      const baseTitle = `Daily ${metricName} Gains`;
+      const modeLabel = State.customDateRangeLabel
+        ? State.customDateRangeLabel
+        : Config.chartModes[State.currentChartMode].label;
+      chartTitle = `${baseTitle} - ${modeLabel}`;
+    } else {
+      const metricName =
+        seriesConfig[State.selectedMetricIndex]?.name || 'Chart';
+      const modeLabel = State.customDateRangeLabel
+        ? State.customDateRangeLabel
+        : Config.chartModes[State.currentChartMode].label;
+      chartTitle = `${metricName} - ${modeLabel}`;
+    }
+
     const shouldAnimate = animate && !State.isMobile();
 
     const visibleSeries = seriesConfig.filter(s => s.visible);
@@ -1361,7 +2091,7 @@ const Charts = {
       },
     });
 
-    return true;
+    await ChartModeDropdown.refresh();
   },
 
   redraw() {
@@ -1951,7 +2681,6 @@ const Rankings = {
         State.saveSettings();
       }
     } catch (error) {
-      console.error('Failed to update smart hours:', error);
     }
   },
 
@@ -1986,6 +2715,13 @@ const Rankings = {
     this.bindSliders();
     this.bindButtons();
   },
+};
+
+Rankings.prefetch = async function (channelId) {
+  const filters = ['all', 'long', 'short'];
+  try {
+    await Promise.allSettled(filters.map(f => Rankings.fetch(channelId, f)));
+  } catch (e) {}
 };
 
 const Gains = {
@@ -2281,50 +3017,45 @@ const Gains = {
   },
 };
 
-const HourlyMode = {
-  button: null,
+Gains.prefetch = async function (channelId) {
+  const metrics = ['views', 'likes'];
+  const filters = ['all', 'long', 'short'];
+  try {
+    await Promise.allSettled(
+      metrics.flatMap(m => filters.map(f => Gains.fetch(channelId, m, f, 1)))
+    );
+  } catch (e) {}
+};
+
+const CustomDatePicker = {
   datePickerButton: null,
   modal: null,
   startDateInput: null,
   endDateInput: null,
-
-  createButton() {
-    if (this.button) return this.button;
-
-    const chartContainer = document.querySelector('.chart-container');
-    if (!chartContainer) return null;
-
-    this.button = Dom.create('button', 'hourly-mode-toggle');
-    this.button.innerHTML = `
-      <i class="fas fa-clock"></i>
-      <span>Hourly Gains</span>
-    `;
-
-    this.button.addEventListener('click', () => this.toggle());
-
-    const title = chartContainer.querySelector('#videoChart');
-    if (title && title.parentElement) {
-      title.parentElement.insertBefore(this.button, title);
-    }
-
-    return this.button;
-  },
+  currentMode: null,
 
   createDatePickerButton() {
-    if (this.datePickerButton) return this.datePickerButton;
+    if (this.datePickerButton) {
+      return this.datePickerButton;
+    }
 
     const chartContainer = document.querySelector('.chart-container');
-    if (!chartContainer) return null;
+    if (!chartContainer) {
+      return null;
+    }
 
-    this.datePickerButton = Dom.create('button', 'hourly-date-picker-button');
+    this.datePickerButton = Dom.create('button', 'custom-date-picker-button');
     this.datePickerButton.innerHTML = '<i class="fas fa-calendar-alt"></i>';
-    this.datePickerButton.title = 'Select date range';
+    this.datePickerButton.title = 'Select custom date range';
 
-    this.datePickerButton.addEventListener('click', () => this.openModal());
+    this.datePickerButton.addEventListener('click', () => {
+      this.openModal();
+    });
 
     const title = chartContainer.querySelector('#videoChart');
     if (title && title.parentElement) {
       title.parentElement.insertBefore(this.datePickerButton, title);
+    } else {
     }
 
     return this.datePickerButton;
@@ -2337,10 +3068,7 @@ const HourlyMode = {
     this.modal.innerHTML = `
       <div class="date-picker-content">
         <div class="date-picker-header">
-          <h3>Select Date Range</h3>
-          <button class="date-picker-close" aria-label="Close">
-            <i class="fas fa-times"></i>
-          </button>
+          <h3 id="modalTitle">Select Date Range</h3>
         </div>
         <div class="date-picker-body">
           <div class="date-input-group">
@@ -2374,9 +3102,6 @@ const HourlyMode = {
       }
     });
 
-    const closeBtn = this.modal.querySelector('.date-picker-close');
-    closeBtn.addEventListener('click', () => this.closeModal());
-
     const cancelBtn = document.getElementById('cancelDatePicker');
     cancelBtn.addEventListener('click', () => this.closeModal());
 
@@ -2386,21 +3111,62 @@ const HourlyMode = {
     return this.modal;
   },
 
-  openModal() {
+  openModal(mode = null) {
+    if (!mode) {
+      const config = State.getChartConfig();
+      mode = config.dataPoints === 'hourly-chart' ? 'hourly' : 'regular';
+    }
+
+    this.currentMode = mode;
+
     if (!this.modal) {
       this.createModal();
     }
 
     if (this.startDateInput && this.endDateInput) {
-      const end = luxon.DateTime.now().setZone('America/New_York');
-      const start = State.hourlyDateRange.start
-        ? luxon.DateTime.fromISO(State.hourlyDateRange.start)
-        : end.minus({ days: Config.hourly.defaultDays });
+      const now = luxon.DateTime.now().setZone('America/New_York');
+      let start;
 
-      this.startDateInput.value = Format.toISODate(start);
-      this.endDateInput.value =
-        State.hourlyDateRange.end || Format.toISODate(end);
-      this.endDateInput.max = Format.toISODate(end);
+      if (mode === 'hourly') {
+        if (State.currentChartMode === '7dh' && !State.hourlyDateRange.start) {
+          start = now.minus({ days: 7 }).startOf('day');
+        } else if (State.hourlyDateRange.start) {
+          start = luxon.DateTime.fromISO(State.hourlyDateRange.start, {
+            zone: 'America/New_York',
+          });
+        } else {
+          start = now.minus({ days: Config.hourly.defaultDays }).startOf('day');
+        }
+
+        this.startDateInput.value =
+          State.hourlyDateRange.start || Format.toISODate(start);
+        this.endDateInput.value =
+          State.hourlyDateRange.end || Format.toISODate(now);
+      } else {
+        if (State.customDateRange.start) {
+          start = luxon.DateTime.fromISO(State.customDateRange.start, {
+            zone: 'America/New_York',
+          });
+        } else {
+          start = now.minus({ days: 30 }).startOf('day');
+        }
+
+        this.startDateInput.value =
+          State.customDateRange.start || Format.toISODate(start);
+        this.endDateInput.value =
+          State.customDateRange.end || Format.toISODate(now);
+      }
+
+      this.endDateInput.max = Format.toISODate(now);
+
+      const title = this.modal.querySelector('#modalTitle');
+      if (title) {
+        if (mode === 'hourly') {
+          title.textContent = 'Select Hourly Chart Date Range';
+        } else {
+          title.textContent = 'Select Custom Date Range';
+        }
+      }
     }
 
     this.modal.classList.add('show');
@@ -2430,166 +3196,134 @@ const HourlyMode = {
 
     this.closeModal();
 
-    if (!State.isHourlyMode) return;
-
     try {
-      this.button.disabled = true;
-      this.button.innerHTML = `
-        <i class="fas fa-spinner fa-spin"></i>
-        <span>Updating...</span>
-      `;
-
-      State.hourlyDateRange.start = startDate;
-      State.hourlyDateRange.end = endDate;
-
-      const data = await this.fetchHourlyData(
-        State.currentEntityId,
-        State.currentChannel,
-        startDate,
-        endDate
-      );
-
-      State.hourlyData = data;
-      await Charts.create();
-
-      this.button.innerHTML = `
-        <i class="fas fa-chart-area"></i>
-        <span>Total Data</span>
-      `;
-    } catch (error) {
-      alert('Failed to update hourly data. Please try again.');
-      this.button.innerHTML = `
-        <i class="fas fa-chart-area"></i>
-        <span>Total Data</span>
-      `;
-    } finally {
-      this.button.disabled = false;
-    }
-  },
-
-  setDefaultDates() {
-    const end = luxon.DateTime.now().setZone('America/New_York');
-    const start = end.minus({ days: Config.hourly.defaultDays });
-
-    State.hourlyDateRange.start = Format.toISODate(start);
-    State.hourlyDateRange.end = Format.toISODate(end);
-  },
-
-  async toggle() {
-    if (!this.button) return;
-
-    if (State.isHourlyMode) {
-      State.isHourlyMode = false;
-      this.button.classList.remove('active');
-      this.button.innerHTML = `
-        <i class="fas fa-clock"></i>
-        <span>Hourly Gains</span>
-      `;
-
-      if (this.datePickerButton) {
-        this.datePickerButton.classList.remove('show');
+      const container = Dom.get('videoChart');
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:20px;">Loading custom date range...</div>';
       }
 
-      await Charts.create();
-    } else {
-      if (!this.datePickerButton) {
-        this.createDatePickerButton();
-      }
+      if (this.currentMode === 'hourly') {
+        State.hourlyDateRange.start = startDate;
+        State.hourlyDateRange.end = endDate;
 
-      this.button.disabled = true;
-      this.button.innerHTML = `
-        <i class="fas fa-spinner fa-spin"></i>
-        <span>Loading...</span>
-      `;
-
-      try {
-        if (!State.hourlyData) {
-          this.setDefaultDates();
-          const data = await this.fetchHourlyData(
-            State.currentEntityId,
-            State.currentChannel,
-            State.hourlyDateRange.start,
-            State.hourlyDateRange.end
-          );
-          State.hourlyData = data;
-        }
-
-        State.isHourlyMode = true;
-        this.button.classList.add('active');
-        this.button.innerHTML = `
-          <i class="fas fa-chart-area"></i>
-          <span>Total Data</span>
-        `;
-
-        if (this.datePickerButton) {
-          this.datePickerButton.classList.add('show');
-        }
-
-        await Charts.create();
-      } catch (error) {
-        State.isHourlyMode = false;
-        alert(
-          'Failed to load hourly data. This video may not have enough data yet.'
+        const data = await ChartModeDropdown.fetchHourlyData(
+          State.currentEntityId,
+          State.currentChannel,
+          startDate,
+          endDate
         );
-      } finally {
-        this.button.disabled = false;
+
+        State.hourlyData = data;
+        State.isHourlyMode = true;
+
+        const start = luxon.DateTime.fromISO(startDate, {
+          zone: 'America/New_York',
+        });
+        const end = luxon.DateTime.fromISO(endDate, {
+          zone: 'America/New_York',
+        });
+        State.customDateRangeLabel = `${start.toFormat(
+          'MM/dd'
+        )} - ${end.toFormat('MM/dd')}`;
+      } else {
+        State.customDateRange.start = startDate;
+        State.customDateRange.end = endDate;
+
+        const start = luxon.DateTime.fromISO(startDate, {
+          zone: 'America/New_York',
+        });
+        const end = luxon.DateTime.fromISO(endDate, {
+          zone: 'America/New_York',
+        });
+        State.customDateRangeLabel = `${start.toFormat(
+          'MM/dd'
+        )} - ${end.toFormat('MM/dd')}`;
+
+        await this.loadCustomRangeData();
       }
+
+      await Charts.create();
+    } catch (error) {
+      console.error('Failed to load custom date range:', error);
+      const container = Dom.get('videoChart');
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:20px;color:red;">Error loading custom date range. Please try again.</div>';
+      }
+
+      if (this.currentMode === 'hourly') {
+        State.isHourlyMode = false;
+        State.hourlyData = null;
+        State.hourlyDateRange = { start: null, end: null };
+      } else {
+        State.customDateRange = { start: null, end: null };
+      }
+
+      State.customDateRangeLabel = null;
     }
   },
 
-  async fetchHourlyData(videoId, channel, startDate, endDate) {
-    const url = Config.api.hourly(videoId, channel, startDate, endDate);
-    try {
-      return await Net.fetchJson(url, {}, 2 * 60 * 1000);
-    } catch (error) {
-      throw error;
+  async loadCustomRangeData() {
+    const startDate = luxon.DateTime.fromISO(State.customDateRange.start, {
+      zone: 'America/New_York',
+    }).startOf('day');
+
+    const endDate = luxon.DateTime.fromISO(State.customDateRange.end, {
+      zone: 'America/New_York',
+    }).endOf('day');
+
+    let filteredData = State.rawData;
+
+    if (Array.isArray(filteredData)) {
+      filteredData = filteredData.filter(entry => {
+        const entryTime = entry.timestamp || entry.time;
+        if (!entryTime) return false;
+
+        const entryDate = luxon.DateTime.fromISO(entryTime, {
+          zone: 'America/New_York',
+        });
+        const isInRange = entryDate >= startDate && entryDate <= endDate;
+
+        return isInRange;
+      });
+
+      if (filteredData.length === 0) {
+        throw new Error('No data available for the selected date range');
+      }
+
+      const daysDiff = Math.ceil(endDate.diff(startDate, 'days').days);
+
+      if (daysDiff <= 60) {
+        State.processedData = DataProcessor.transform(filteredData);
+      } else {
+        const dailyData = DataProcessor.processDaily(
+          filteredData,
+          !!filteredData[0]?.timestamp
+        );
+        State.processedData = DataProcessor.transform(dailyData);
+      }
+    } else {
+      throw new Error('Invalid data format');
     }
   },
 
   show() {
-    if (State.getMetricName() === 'comments') {
-      this.hide();
-      return;
-    }
-
-    if (State.isRankingsView || State.isGainsView) {
-      this.hide();
-      return;
-    }
-
-    if (State.processedData.series?.uploads?.length > 0) {
-      this.hide();
-      return;
-    }
-
-    if (!this.button) {
-      this.createButton();
-    }
-    if (this.button) {
-      this.button.style.display = 'flex';
+    if (!this.datePickerButton) {
+      this.createDatePickerButton();
     }
   },
 
   hide() {
-    if (this.button) {
-      this.button.style.display = 'none';
-    }
     if (this.datePickerButton) {
       this.datePickerButton.classList.remove('show');
     }
   },
 
   reset() {
-    State.isHourlyMode = false;
-    State.hourlyData = null;
     State.hourlyDateRange = { start: null, end: null };
-    if (this.button) {
-      this.button.classList.remove('active');
-      this.button.innerHTML = `
-        <i class="fas fa-clock"></i>
-        <span>Hourly Gains</span>
-      `;
-    }
+    State.customDateRange = { start: null, end: null };
+    State.customDateRangeLabel = null;
     if (this.datePickerButton) {
       this.datePickerButton.classList.remove('show');
     }
@@ -2746,19 +3480,10 @@ const Search = {
         card.style.setProperty('--active-card-color', colors[index]);
         State.selectedMetricIndex = index;
 
-        if (State.isHourlyMode && State.getMetricName() === 'comments') {
-          State.isHourlyMode = false;
-          HourlyMode.reset();
-          HourlyMode.hide();
-          await Charts.create();
-        } else if (State.isHourlyMode) {
-          await Charts.create();
-        } else {
-          if (State.getMetricName() === 'comments') {
-            HourlyMode.hide();
-          } else if (!State.isRankingsView && !State.isGainsView) {
-            HourlyMode.show();
-          }
+        ChartModeDropdown.show();
+        const didChangeMode = await ChartModeDropdown.refresh();
+
+        if (!didChangeMode) {
           Charts.create({ animate: true });
         }
       });
@@ -2998,7 +3723,7 @@ const Search = {
       const data = await Net.fetchJson(
         `${Config.api.baseUrl}/allvideos`,
         {},
-        5 * 60 * 1000
+        60 * 60 * 1000
       );
       if (data?.channels) {
         Object.entries(data.channels).forEach(([channel, videos]) => {
@@ -3306,8 +4031,8 @@ const Loader = {
 
     const p = (async () => {
       State.reset();
-      HourlyMode.reset();
-      HourlyMode.hide();
+      ChartModeDropdown.reset();
+      ChartModeDropdown.hide();
       State.currentEntityId = channelId;
       State.currentChannel = channelId;
       State.isRankingsView = showRankings;
@@ -3441,14 +4166,29 @@ const Loader = {
 
           if (Array.isArray(combinedData)) {
             State.rawData = combinedData;
-            State.processedData = DataProcessor.transform(combinedData);
 
-            await Charts.create();
+            State._dailyCache = DataProcessor.processDaily(combinedData);
+
+            await ChartModeDropdown.loadAndDisplayData();
             Stats.update();
 
-            const dailyData = DataProcessor.processDaily(combinedData);
+            const dailyData = State._dailyCache || [];
             const currentData = combinedData[combinedData.length - 1];
             Tables.create(dailyData, currentData);
+
+            ChartModeDropdown.show();
+
+            if ('requestIdleCallback' in window) {
+              requestIdleCallback(() => {
+                Rankings.prefetch(State.currentChannel);
+                Gains.prefetch(State.currentChannel);
+              });
+            } else {
+              setTimeout(() => {
+                Rankings.prefetch(State.currentChannel);
+                Gains.prefetch(State.currentChannel);
+              }, 150);
+            }
           } else {
             throw new Error('Invalid data format received');
           }
@@ -3484,7 +4224,7 @@ const Loader = {
 
     const p = (async () => {
       State.reset();
-      HourlyMode.reset();
+      ChartModeDropdown.reset();
       State.currentEntityId = videoId;
       State.currentChannel = channelId;
       State.isRankingsView = false;
@@ -3549,20 +4289,58 @@ const Loader = {
 
           State.rawData = filtered;
 
-          const processed = DataProcessor.transform(filtered);
-          delete processed.series.uploads;
-          State.processedData = processed;
+          State._dailyCache = DataProcessor.processDaily(filtered, true);
 
-          await Charts.create();
+          await ChartModeDropdown.loadAndDisplayData();
           Stats.update();
 
-          const dailyData = DataProcessor.processDaily(filtered, true);
+          const dailyData = State._dailyCache || [];
           const currentData = filtered[filtered.length - 1];
           Tables.create(dailyData, currentData, true);
 
           Dom.show('videoInfoCard');
 
-          HourlyMode.show();
+          ChartModeDropdown.show();
+
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(() => {
+              Rankings.prefetch(State.currentChannel);
+              Gains.prefetch(State.currentChannel);
+            });
+          } else {
+            setTimeout(() => {
+              Rankings.prefetch(State.currentChannel);
+              Gains.prefetch(State.currentChannel);
+            }, 150);
+          }
+
+          const sevenDhAvailable =
+            State.currentEntityId !== State.currentChannel &&
+            State.getMetricName() !== 'comments';
+
+          if (sevenDhAvailable && !State.hourlyData) {
+            const endDt = luxon.DateTime.now().setZone('America/New_York');
+            const startDt = endDt.minus({ days: Config.hourly.defaultDays });
+            const startISO = Format.toISODate(startDt);
+            const endISO = Format.toISODate(endDt);
+
+            const doPrefetch = async () => {
+              try {
+                State.hourlyData = await ChartModeDropdown.fetchHourlyData(
+                  State.currentEntityId,
+                  State.currentChannel,
+                  startISO,
+                  endISO
+                );
+              } catch {}
+            };
+
+            if ('requestIdleCallback' in window) {
+              requestIdleCallback(doPrefetch);
+            } else {
+              setTimeout(doPrefetch, 200);
+            }
+          }
         } else {
           throw new Error('Invalid video data format');
         }

@@ -1260,13 +1260,28 @@ const DataProcessor = {
   getCurrentSeries() {
     const metric = State.getMetricName();
 
+    let points;
+
     if (State.isGainsMode && metric !== 'uploads') {
       const values = State.processedData.series[metric];
       const timestamps = State.processedData.timestamps;
-      return this.processDailyGains(timestamps, values);
+      points = this.processDailyGains(timestamps, values);
+    } else {
+      points = this.seriesPointsForChart(metric);
     }
 
-    return this.seriesPointsForChart(metric);
+    if (Array.isArray(points) && points.length > 0) {
+      const first2025Index = points.findIndex(([ts]) => {
+        const dt = luxon.DateTime.fromMillis(ts, { zone: 'America/New_York' });
+        return dt.year === 2025;
+      });
+      if (first2025Index !== -1) {
+        const first2025Ts = points[first2025Index][0];
+        points = points.filter(([ts]) => ts !== first2025Ts);
+      }
+    }
+
+    return points;
   },
 
   processDaily(data, useTimestamp = false) {
@@ -1356,6 +1371,18 @@ const ChartBuilder = {
         seriesName = `Daily ${config.name} Gains`;
       } else {
         seriesData = DataProcessor.seriesPointsForChart(config.key);
+        if (Array.isArray(seriesData) && seriesData.length > 0) {
+          const first2025Index = seriesData.findIndex(([ts]) => {
+            const dt = luxon.DateTime.fromMillis(ts, {
+              zone: 'America/New_York',
+            });
+            return dt.year === 2025;
+          });
+          if (first2025Index !== -1) {
+            const first2025Ts = seriesData[first2025Index][0];
+            seriesData = seriesData.filter(([ts]) => ts !== first2025Ts);
+          }
+        }
       }
 
       return {
@@ -1387,6 +1414,16 @@ const ChartBuilder = {
     const currentHour = now.hour;
 
     hourlyData.dates.forEach((dateStr, index) => {
+      if (!this._first2025DateStr) {
+        const dt = luxon.DateTime.fromISO(dateStr, {
+          zone: 'America/New_York',
+        });
+        if (dt.year === 2025) {
+          this._first2025DateStr = dateStr;
+        }
+      }
+
+      if (dateStr === this._first2025DateStr) return;
       const dateData = hourlyData.data[dateStr];
       const values = dateData[metric];
 

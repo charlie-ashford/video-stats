@@ -4390,11 +4390,11 @@ const Export = {
       const entry = dataMap.get(hourKey);
 
       if (entry) {
-        csvContent += `${time.toISO()},${entry.views},${entry.likes},${
-          entry.comments
-        }\n`;
+        csvContent += `${time.toFormat('yyyy-MM-dd HH:mm:ss')},${entry.views},${
+          entry.likes
+        },${entry.comments}\n`;
       } else {
-        csvContent += `${time.toISO()},,,\n`;
+        csvContent += `${time.toFormat('yyyy-MM-dd HH:mm:ss')},,,\n`;
       }
     });
 
@@ -4412,22 +4412,43 @@ const Export = {
   },
 
   toCsv() {
-    if (!State.processedData.timestamps || !State.processedData.series) return;
+    if (!State.rawData || !Array.isArray(State.rawData)) {
+      console.error('No raw data available for export');
+      return;
+    }
 
-    const timestamps = State.processedData.timestamps
-      .map((timestamp, i) => ({
-        date: luxon.DateTime.fromMillis(timestamp)
-          .setZone('America/New_York')
-          .toJSDate(),
-        views: Math.round(State.processedData.series.views[i] || 0),
-        likes: Math.round(State.processedData.series.likes[i] || 0),
-        comments: Math.round(State.processedData.series.comments[i] || 0),
-      }))
+    const useTimestamp = !!State.rawData[0]?.timestamp;
+    const timestamps = State.rawData
+      .filter(entry => {
+        const timeField = useTimestamp ? entry.timestamp : entry.time;
+        return (
+          timeField &&
+          entry.views != null &&
+          entry.likes != null &&
+          entry.comments != null
+        );
+      })
+      .map(entry => {
+        const timeField = useTimestamp ? entry.timestamp : entry.time;
+        return {
+          date: luxon.DateTime.fromISO(timeField)
+            .setZone('America/New_York')
+            .toJSDate(),
+          views: Math.round(entry.views || 0),
+          likes: Math.round(entry.likes || 0),
+          comments: Math.round(entry.comments || 0),
+        };
+      })
       .sort((a, b) => a.date - b.date);
+
+    if (timestamps.length === 0) {
+      console.error('No valid data points found for export');
+      return;
+    }
 
     const csvContent = this.generateCsv(timestamps);
     if (csvContent) {
-      this.download(csvContent, `${State.currentEntityId}_data.csv`);
+      this.download(csvContent, `${State.currentEntityId}_all_time_data.csv`);
     }
   },
 

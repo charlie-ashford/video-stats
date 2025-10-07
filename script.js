@@ -4262,11 +4262,13 @@ const Loader = {
               requestIdleCallback(() => {
                 Rankings.prefetch(State.currentChannel);
                 Gains.prefetch(State.currentChannel);
+                Listing.prefetch(State.currentChannel);
               });
             } else {
               setTimeout(() => {
                 Rankings.prefetch(State.currentChannel);
                 Gains.prefetch(State.currentChannel);
+                Listing.prefetch(State.currentChannel);
               }, 150);
             }
           } else {
@@ -4441,11 +4443,13 @@ const Loader = {
             requestIdleCallback(() => {
               Rankings.prefetch(State.currentChannel);
               Gains.prefetch(State.currentChannel);
+              Listing.prefetch(State.currentChannel);
             });
           } else {
             setTimeout(() => {
               Rankings.prefetch(State.currentChannel);
               Gains.prefetch(State.currentChannel);
+              Listing.prefetch(State.currentChannel);
             }, 150);
           }
 
@@ -4510,6 +4514,9 @@ const Listing = {
     loading: false,
   },
 
+  // Add caching like rankings and gains
+  cache: new Map(),
+
   parseDurationToSeconds(str) {
     if (!str) return 0;
     const parts = String(str)
@@ -4563,17 +4570,97 @@ const Listing = {
     return `${dt.toFormat('M/d/yyyy')} ${dt.toFormat('h:mm:ss a')} EST`;
   },
 
+  // Add fetch method with caching like rankings/gains
+  async fetch(channelId, filter = 'all') {
+    const cacheKey = `${channelId}-${filter}`;
+    const url = `${Config.api.listing}?channel=${channelId}&filter=${filter}`;
+
+    try {
+      const data = await Net.fetchJson(url, {}, 2 * 60 * 1000); // 2 minute cache
+      if (!data.videos || !Array.isArray(data.videos)) {
+        return this.cache.get(cacheKey) || [];
+      }
+      this.cache.set(cacheKey, data.videos);
+      return data.videos;
+    } catch (error) {
+      console.error('Listing fetch error:', error);
+      return this.cache.get(cacheKey) || [];
+    }
+  },
+
   async fetchAll() {
-    const url = `${Config.api.listing}?channel=${State.currentChannel}&filter=${this.state.filter}`;
+    const cacheKey = `${State.currentChannel}-${this.state.filter}`;
+    const cached = this.cache.get(cacheKey);
+
+    // Use cached data immediately if available
+    if (cached) {
+      this.state.items = cached;
+      this.render();
+    }
+
+    // Always fetch fresh data
     try {
       this.state.loading = true;
-      const data = await Net.fetchJson(url, {}, 2 * 60 * 1000);
-      this.state.items = Array.isArray(data?.videos) ? data.videos : [];
+      const videos = await this.fetch(State.currentChannel, this.state.filter);
+      this.state.items = videos;
+      if (State.isListingView) {
+        this.render();
+      }
     } catch (e) {
-      this.state.items = [];
+      // If we had no cached data, show empty state
+      if (!cached) {
+        this.state.items = [];
+        if (State.isListingView) {
+          this.render();
+        }
+      }
       console.error('Listing fetch error:', e);
     } finally {
       this.state.loading = false;
+    }
+  },
+
+  // Add instant update method like rankings/gains
+  updateInstant() {
+    if (!State.isListingView || !State.currentChannel) return;
+
+    const cacheKey = `${State.currentChannel}-${this.state.filter}`;
+    const cached = this.cache.get(cacheKey);
+
+    if (cached) {
+      this.state.items = cached;
+      this.render();
+    }
+  },
+
+  // Add update with fetch method like rankings/gains
+  async updateWithFetch() {
+    if (!State.isListingView || !State.currentChannel) return;
+
+    const tbody = Dom.get('listingTbody');
+    if (tbody) {
+      tbody.innerHTML =
+        '<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Updating video list...</td></tr>';
+    }
+
+    const cacheKey = `${State.currentChannel}-${this.state.filter}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      this.state.items = cached;
+      this.render();
+    }
+
+    try {
+      const videos = await this.fetch(State.currentChannel, this.state.filter);
+      if (State.isListingView) {
+        this.state.items = videos;
+        this.render();
+      }
+    } catch (error) {
+      if (tbody && !cached) {
+        tbody.innerHTML =
+          '<tr><td colspan="7" style="padding: 1rem; text-align: center; color: red;">Error loading video list. Please try again.</td></tr>';
+      }
     }
   },
 
@@ -4582,10 +4669,26 @@ const Listing = {
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    if (this.state.loading && this.state.items.length === 0) {
+      tbody.innerHTML =
+        '<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Loading video list...</td></tr>';
+      return;
+    }
+
     const q = this.state.q.trim().toLowerCase();
     const filtered = this.state.items.filter(v =>
       q ? (v.title || '').toLowerCase().includes(q) : true
     );
+
+    if (filtered.length === 0) {
+      const message = q
+        ? `No videos found matching "${q}"`
+        : this.state.items.length === 0
+        ? 'No videos available for this filter'
+        : 'No videos match the current search';
+      tbody.innerHTML = `<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">${message}</td></tr>`;
+      return;
+    }
 
     const sorted = filtered.sort((a, b) =>
       this.compare(a, b, this.state.sortKey, this.state.sortDir)
@@ -4632,13 +4735,20 @@ const Listing = {
 
     const subtitle = document.getElementById('listingSubtitle');
     if (subtitle) {
+      const totalCount = this.state.items.length;
+      const filteredCount = filtered.length;
       const label =
         this.state.filter === 'all'
           ? 'videos'
           : this.state.filter === 'long'
           ? 'videos'
           : 'shorts';
-      subtitle.textContent = `${filtered.length.toLocaleString()} ${label} loaded`;
+
+      if (q) {
+        subtitle.textContent = `${filteredCount.toLocaleString()} of ${totalCount.toLocaleString()} ${label} (filtered)`;
+      } else {
+        subtitle.textContent = `${filteredCount.toLocaleString()} ${label} loaded`;
+      }
     }
   },
 
@@ -4698,7 +4808,7 @@ const Listing = {
           .forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.state.filter = btn.dataset.filter;
-        this.refresh();
+        this.updateWithFetch(); // Use the new method instead of refresh
       });
     });
 
@@ -4733,18 +4843,21 @@ const Listing = {
   },
 
   async refresh() {
-    const tbody = Dom.get('listingTbody');
-    if (tbody) {
-      tbody.innerHTML =
-        '<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Loading video list...</td></tr>';
-    }
     await this.fetchAll();
-    this.render();
   },
 
   init() {
     this.bind();
   },
+};
+
+Listing.prefetch = async function (channelId) {
+  const filters = ['all', 'long', 'short'];
+  try {
+    await Promise.allSettled(filters.map(f => Listing.fetch(channelId, f)));
+  } catch (e) {
+    console.error('Listing prefetch error:', e);
+  }
 };
 
 const Export = {

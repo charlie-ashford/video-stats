@@ -13,6 +13,7 @@ const Config = {
     },
     rankings: 'https://api.communitrics.com/videos/top10',
     gains: 'https://api.communitrics.com/videos/gains',
+    listing: 'https://api.communitrics.com/videos/listing',
     hourly: (videoId, channel, startDate, endDate) => {
       let url = `https://api.communitrics.com/videos/hourly/${videoId}?channel=${channel}`;
       if (startDate) url += `&startDate=${startDate}`;
@@ -286,6 +287,7 @@ const State = {
   pendingYAxisRange: null,
   isRankingsView: false,
   isGainsView: false,
+  isListingView: false,
   currentChartMode: Config.defaultChartMode,
   isGainsMode: false,
   isHourlyMode: false,
@@ -405,6 +407,7 @@ const State = {
     this.currentChartMode = Config.defaultChartMode;
     this.isGainsMode = false;
     this.isHourlyMode = false;
+    this.isListingView = false;
     this.hourlyData = null;
     this.hourlyDateRange = { start: null, end: null };
     this.customDateRange = { start: null, end: null };
@@ -1014,14 +1017,22 @@ const Dom = {
     if (type === 'rankings') {
       this.show('rankingsView');
       this.hide('gainsView');
+      this.hide('listingView');
       this.hide('videoStatsView');
     } else if (type === 'gains') {
       this.hide('rankingsView');
       this.show('gainsView');
+      this.hide('listingView');
+      this.hide('videoStatsView');
+    } else if (type === 'listing') {
+      this.hide('rankingsView');
+      this.hide('gainsView');
+      this.show('listingView');
       this.hide('videoStatsView');
     } else {
       this.hide('rankingsView');
       this.hide('gainsView');
+      this.hide('listingView');
       this.show('videoStatsView');
     }
   },
@@ -3562,6 +3573,14 @@ const Search = {
           true,
           true
         );
+      } else if (videoId === 'list') {
+        const channel =
+          channelParam && channelMap[channelParam]
+            ? channelMap[channelParam]
+            : Config.channels[0];
+        const input = Dom.get('searchInput');
+        if (input) input.value = 'Channel Video List';
+        Loader.loadChannelListing(channel.id, channel.avatar, true);
       } else if (channelMap[videoId]) {
         const channel = channelMap[videoId];
         const input = Dom.get('searchInput');
@@ -3667,6 +3686,27 @@ const Search = {
         false,
         true
       );
+    });
+
+    const listOpt = Dom.create('div', 'dropdown-list-item bold');
+    listOpt.innerHTML = `
+    <div style="display: flex; align-items: center;">
+      <i class="fas fa-list" style="margin-right: 10px; color: var(--primary-color); font-size: 1.2rem;"></i>
+      Channel Video List
+    </div>
+  `;
+    dropdown.appendChild(listOpt);
+
+    listOpt.addEventListener('click', () => {
+      const input = Dom.get('searchInput');
+      if (input) input.value = 'Channel Video List';
+      dropdown.classList.remove('show');
+
+      const currentChannel = State.currentChannel || 'mrbeast';
+      const channelConfig =
+        Config.channels.find(ch => ch.id === currentChannel) ||
+        Config.channels[0];
+      Loader.loadChannelListing(channelConfig.id, channelConfig.avatar);
     });
 
     Config.channels.forEach(channel => {
@@ -3830,6 +3870,19 @@ const Search = {
         true,
         true
       );
+    } else if (videoId === 'list') {
+      const channel =
+        channelParam && channelMap[channelParam]
+          ? channelMap[channelParam]
+          : Config.channels[0];
+      const input = Dom.get('searchInput');
+      if (input) input.value = 'Channel Video List';
+
+      if (hasAllVideos) {
+        this.updateVideoList(channel.id);
+      }
+
+      Loader.loadChannelListing(channel.id, channel.avatar, true);
     } else if (channelMap[videoId]) {
       const channel = channelMap[videoId];
       const input = Dom.get('searchInput');
@@ -4058,6 +4111,7 @@ const Loader = {
       State.currentChannel = channelId;
       State.isRankingsView = showRankings;
       State.isGainsView = showGains;
+      State.isListingView = false;
 
       State.loadSettings();
 
@@ -4233,6 +4287,59 @@ const Loader = {
     return p;
   },
 
+  async loadChannelListing(channelId, profileUrl, isNavigation = false) {
+    const key = `channel-list:${channelId}`;
+    if (this._loadPromises.has(key)) {
+      return this._loadPromises.get(key);
+    }
+    if (this._loadedKey === key && !isNavigation) {
+      return;
+    }
+
+    const p = (async () => {
+      State.reset();
+      ChartModeDropdown.reset();
+      ChartModeDropdown.hide();
+
+      State.currentEntityId = channelId;
+      State.currentChannel = channelId;
+      State.isRankingsView = false;
+      State.isGainsView = false;
+      State.isListingView = true;
+
+      if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      Search.updateVideoList(channelId);
+
+      const headerTitle = document.querySelector('header h1');
+      if (headerTitle) {
+        headerTitle.textContent = 'Channel Video List';
+      }
+
+      Dom.removeImg();
+      await this.setupProfile(profileUrl);
+
+      if (!isNavigation) {
+        Dom.updateUrl('list', channelId);
+      }
+      Dom.setView('listing');
+
+      const exportBtn = Dom.get('exportButton');
+      if (exportBtn) exportBtn.style.display = 'none';
+
+      Listing.applySettings();
+      await Listing.refresh();
+    })();
+
+    this._loadPromises.set(key, p);
+    try {
+      await p;
+    } finally {
+      this._loadPromises.delete(key);
+    }
+    return p;
+  },
+
   async loadVideo(videoId, channelId = 'mrbeast', isNavigation = false) {
     const key = `video:${videoId}|${channelId}`;
 
@@ -4385,6 +4492,253 @@ const Loader = {
     }
 
     return p;
+  },
+};
+
+const Listing = {
+  state: {
+    items: [],
+    sortKey: 'uploadTime',
+    sortDir: 'desc',
+    filter: 'all',
+    q: '',
+    loading: false,
+  },
+
+  parseDurationToSeconds(str) {
+    if (!str) return 0;
+    const parts = String(str)
+      .split(':')
+      .map(v => parseInt(v, 10));
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] || 0;
+  },
+
+  compare(a, b, key, dir) {
+    const mul = dir === 'asc' ? 1 : -1;
+    switch (key) {
+      case 'views':
+      case 'likes':
+      case 'comments': {
+        const av = parseInt(a[key] || 0, 10);
+        const bv = parseInt(b[key] || 0, 10);
+        return (av - bv) * mul;
+      }
+      case 'duration': {
+        const av = this.parseDurationToSeconds(a.duration);
+        const bv = this.parseDurationToSeconds(b.duration);
+        return (av - bv) * mul;
+      }
+      case 'uploadTime':
+      case 'lastUpdated': {
+        const av = new Date(a[key] || 0).getTime();
+        const bv = new Date(b[key] || 0).getTime();
+        return (av - bv) * mul;
+      }
+      case 'isShort': {
+        const av = a.isShort ? 1 : 0;
+        const bv = b.isShort ? 1 : 0;
+        return (av - bv) * mul;
+      }
+      case 'title':
+      default: {
+        const av = (a.title || '').toLowerCase();
+        const bv = (b.title || '').toLowerCase();
+        return av.localeCompare(bv) * mul;
+      }
+    }
+  },
+
+  formatDate(iso) {
+    if (!iso) return '';
+    const dt = luxon.DateTime.fromISO(iso, { zone: 'America/New_York' });
+    if (!dt.isValid) return '';
+    return `${dt.toFormat('M/d/yyyy')} ${dt.toFormat('h:mm:ss a')} EST`;
+  },
+
+  async fetchAll() {
+    const url = `${Config.api.listing}?channel=${State.currentChannel}&filter=${this.state.filter}`;
+    try {
+      this.state.loading = true;
+      const data = await Net.fetchJson(url, {}, 2 * 60 * 1000);
+      this.state.items = Array.isArray(data?.videos) ? data.videos : [];
+    } catch (e) {
+      this.state.items = [];
+      console.error('Listing fetch error:', e);
+    } finally {
+      this.state.loading = false;
+    }
+  },
+
+  render() {
+    const tbody = Dom.get('listingTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const q = this.state.q.trim().toLowerCase();
+    const filtered = this.state.items.filter(v =>
+      q ? (v.title || '').toLowerCase().includes(q) : true
+    );
+
+    const sorted = filtered.sort((a, b) =>
+      this.compare(a, b, this.state.sortKey, this.state.sortDir)
+    );
+
+    const frag = document.createDocumentFragment();
+    sorted.forEach(v => {
+      const tr = document.createElement('tr');
+      tr.className = 'listing-row';
+      const typeLabel = v.isShort ? 'Short' : 'Long';
+
+      tr.innerHTML = `
+     <td class="listing-video-cell">
+       <div class="listing-video">
+         <img
+           class="listing-video-thumb"
+           src="${v.thumbnail}"
+           alt=""
+           loading="lazy"
+         />
+         <div class="listing-video-title">${v.title || ''}</div>
+       </div>
+     </td>
+     <td class="listing-num">${(v.views || 0).toLocaleString()}</td>
+     <td class="listing-num">${(v.likes || 0).toLocaleString()}</td>
+     <td class="listing-num">${(v.comments || 0).toLocaleString()}</td>
+     <td>${v.duration || ''}</td>
+     <td>${this.formatDate(v.uploadTime)}</td>
+     <td>
+       <span class="type-pill ${
+         v.isShort ? 'short' : 'long'
+       }">${typeLabel}</span>
+     </td>
+   `;
+
+      tr.addEventListener('click', () => {
+        Loader.loadVideo(v.videoId, State.currentChannel);
+        const searchInput = Dom.get('searchInput');
+        if (searchInput) searchInput.value = v.title || '';
+      });
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+
+    const subtitle = document.getElementById('listingSubtitle');
+    if (subtitle) {
+      const label =
+        this.state.filter === 'all'
+          ? 'videos'
+          : this.state.filter === 'long'
+          ? 'videos'
+          : 'shorts';
+      subtitle.textContent = `${filtered.length.toLocaleString()} ${label} loaded`;
+    }
+  },
+
+  bind() {
+    document.querySelectorAll('.listing-table th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.key;
+        const defaultKey = 'uploadTime';
+        const defaultDir = 'desc';
+
+        if (this.state.sortKey === key) {
+          if (this.state.sortDir === 'desc') {
+            this.state.sortDir = 'asc';
+          } else if (this.state.sortDir === 'asc') {
+            this.state.sortKey = defaultKey;
+            this.state.sortDir = defaultDir;
+          } else {
+            this.state.sortDir = 'desc';
+          }
+        } else {
+          this.state.sortKey = key;
+          this.state.sortDir = 'desc';
+        }
+        document.querySelectorAll('.listing-table th.sortable').forEach(h => {
+          h.classList.remove('sorted-asc', 'sorted-desc');
+          h.removeAttribute('aria-sort');
+        });
+        const applyIndicator = (colKey, dir) => {
+          const activeTh = document.querySelector(
+            `.listing-table th.sortable[data-key="${colKey}"]`
+          );
+          if (activeTh) {
+            activeTh.classList.add(
+              dir === 'asc' ? 'sorted-asc' : 'sorted-desc'
+            );
+            activeTh.setAttribute('aria-sort', dir);
+          }
+        };
+
+        if (
+          this.state.sortKey === defaultKey &&
+          this.state.sortDir === defaultDir
+        ) {
+          applyIndicator(defaultKey, defaultDir);
+        } else {
+          applyIndicator(this.state.sortKey, this.state.sortDir);
+        }
+
+        this.render();
+      });
+    });
+
+    document.querySelectorAll('.listing-filter-button').forEach(btn => {
+      btn.addEventListener('click', e => {
+        document
+          .querySelectorAll('.listing-filter-button')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.state.filter = btn.dataset.filter;
+        this.refresh();
+      });
+    });
+
+    const input = Dom.get('listingSearchInput');
+    if (input) {
+      input.addEventListener(
+        'input',
+        Dom.debounce(e => {
+          this.state.q = e.target.value || '';
+          this.render();
+        }, 150)
+      );
+    }
+  },
+
+  applySettings() {
+    document.querySelectorAll('.listing-filter-button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.filter === this.state.filter);
+    });
+    const activeTh = document.querySelector(
+      `.listing-table th.sortable[data-key="${this.state.sortKey}"]`
+    );
+    document
+      .querySelectorAll('.listing-table th.sortable')
+      .forEach(h => h.classList.remove('sorted-asc', 'sorted-desc'));
+    if (activeTh) {
+      activeTh.classList.add(
+        this.state.sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc'
+      );
+      activeTh.setAttribute('aria-sort', this.state.sortDir);
+    }
+  },
+
+  async refresh() {
+    const tbody = Dom.get('listingTbody');
+    if (tbody) {
+      tbody.innerHTML =
+        '<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Loading video list...</td></tr>';
+    }
+    await this.fetchAll();
+    this.render();
+  },
+
+  init() {
+    this.bind();
   },
 };
 
@@ -4645,6 +4999,7 @@ const App = {
       Layout.bindEvents();
       Rankings.init();
       Gains.init();
+      Listing.init();
     } catch (error) {
       this.showFallback(error);
     }

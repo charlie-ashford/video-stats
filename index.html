@@ -103,6 +103,7 @@
           </div>
           <div class="dropdown-list" id="dropdownList" role="listbox"></div>
         </div>
+        <div class="mobile-buttons"></div>
         <button
           class="theme-toggle"
           id="themeToggle"
@@ -311,6 +312,69 @@
           <p class="gains-subtitle">Likes in Last 24 Hours</p>
         </div>
         <div class="gains-list" id="gainsList"></div>
+      </div>
+    </div>
+
+    <div id="listingView" class="listing-view" style="display: none">
+      <div class="listing-controls">
+        <div class="gains-button-groups" style="margin-bottom: 1rem">
+          <div class="button-group">
+            <span class="button-group-label">Video Type:</span>
+            <button
+              class="control-button listing-filter-button active"
+              data-filter="all"
+            >
+              All
+            </button>
+            <button
+              class="control-button listing-filter-button"
+              data-filter="long"
+            >
+              Long
+            </button>
+            <button
+              class="control-button listing-filter-button"
+              data-filter="short"
+            >
+              Shorts
+            </button>
+          </div>
+          <div class="button-group" style="gap: 0.75rem">
+            <span class="button-group-label">Filter:</span>
+            <input
+              id="listingSearchInput"
+              type="text"
+              placeholder="Filter by title..."
+              class="listing-search-input"
+              aria-label="Filter by title"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="listing-panel">
+        <div class="listing-header">
+          <h2>All Channel Videos</h2>
+          <p id="listingSubtitle" class="listing-subtitle">
+          </p>
+        </div>
+
+        <div class="listing-table-wrapper">
+          <table class="listing-table">
+            <thead>
+              <tr>
+                <th class="sortable" data-key="title">Video</th>
+                <th class="sortable" data-key="views">Views</th>
+                <th class="sortable" data-key="likes">Likes</th>
+                <th class="sortable" data-key="comments">Comments</th>
+                <th class="sortable" data-key="duration">Duration</th>
+                <th class="sortable" data-key="uploadTime">Upload Date</th>
+                <th class="sortable" data-key="isShort">Type</th>
+              </tr>
+            </thead>
+            <tbody id="listingTbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 

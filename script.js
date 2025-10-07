@@ -156,7 +156,7 @@ const Config = {
 const Net = {
   inflight: new Map(),
   cache: new Map(),
-  defaultTtl: 10 * 60 * 1000,
+  defaultTtl: 5 * 60 * 1000,
 
   getTenMinuteAlignedExpiryMs(minMs = 10000) {
     const nowMs = Date.now();
@@ -678,7 +678,7 @@ const ChartModeDropdown = {
   async fetchHourlyData(videoId, channel, startDate, endDate) {
     const url = Config.api.hourly(videoId, channel, startDate, endDate);
     try {
-      return await Net.fetchJson(url, {}, 2 * 60 * 1000);
+      return await Net.fetchJson(url, {}, 5 * 60 * 1000);
     } catch (error) {
       throw error;
     }
@@ -2381,7 +2381,7 @@ const Rankings = {
     const url = `${Config.api.rankings}?channel=${channelId}&filter=${filter}`;
 
     try {
-      const data = await Net.fetchJson(url, {}, null);
+      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
       if (!data.videos || !Array.isArray(data.videos)) {
         return State.cachedRankings.get(cacheKey) || [];
       }
@@ -2772,7 +2772,7 @@ const Gains = {
     const url = `${Config.api.gains}?channel=${channelId}&metric=${metric}&filter=${filter}`;
 
     try {
-      const data = await Net.fetchJson(url, {}, null);
+      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
       if (!data.videos || !Array.isArray(data.videos)) {
         return this.allVideosCache.get(cacheKey) || [];
       }
@@ -3921,7 +3921,7 @@ const Search = {
       const data = await Net.fetchJson(
         Config.api.videos.byChannel('mrbeast'),
         {},
-        2 * 60 * 1000
+        5 * 60 * 1000
       );
 
       if (
@@ -4087,11 +4087,6 @@ const Loader = {
       showRankings ? 'rank' : showGains ? 'gains' : 'stats'
     }`;
 
-    // Remove the early return that was preventing navigation
-    // if (this._loadedKey === key && !isNavigation) {
-    //   return;
-    // }
-
     if (this._loadPromises.has(key)) {
       return this._loadPromises.get(key);
     }
@@ -4242,7 +4237,7 @@ const Loader = {
               ? Config.api.combinedHistory.mrbeast
               : Config.api.combinedHistory.byChannel(channelId);
 
-          const combinedData = await Net.fetchJson(endpoint, {}, 2 * 60 * 1000);
+          const combinedData = await Net.fetchJson(endpoint, {}, 5 * 60 * 1000);
 
           if (Array.isArray(combinedData)) {
             State.rawData = combinedData;
@@ -4409,10 +4404,10 @@ const Loader = {
         let endpoint = Config.api.videoStats.byChannel(channelId, videoId);
         let video = null;
         try {
-          video = await Net.fetchJson(endpoint, {}, 2 * 60 * 1000);
+          video = await Net.fetchJson(endpoint, {}, 5 * 60 * 1000);
         } catch (e) {
           endpoint = Config.api.videoStats.base + videoId;
-          video = await Net.fetchJson(endpoint, {}, 2 * 60 * 1000);
+          video = await Net.fetchJson(endpoint, {}, 5 * 60 * 1000);
         }
 
         if (video?.stats && Array.isArray(video.stats)) {
@@ -4514,7 +4509,6 @@ const Listing = {
     loading: false,
   },
 
-  // Add caching like rankings and gains
   cache: new Map(),
 
   parseDurationToSeconds(str) {
@@ -4570,13 +4564,12 @@ const Listing = {
     return `${dt.toFormat('M/d/yyyy')} ${dt.toFormat('h:mm:ss a')} EST`;
   },
 
-  // Add fetch method with caching like rankings/gains
   async fetch(channelId, filter = 'all') {
     const cacheKey = `${channelId}-${filter}`;
     const url = `${Config.api.listing}?channel=${channelId}&filter=${filter}`;
 
     try {
-      const data = await Net.fetchJson(url, {}, 2 * 60 * 1000); // 2 minute cache
+      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000); 
       if (!data.videos || !Array.isArray(data.videos)) {
         return this.cache.get(cacheKey) || [];
       }
@@ -4592,13 +4585,11 @@ const Listing = {
     const cacheKey = `${State.currentChannel}-${this.state.filter}`;
     const cached = this.cache.get(cacheKey);
 
-    // Use cached data immediately if available
     if (cached) {
       this.state.items = cached;
       this.render();
     }
 
-    // Always fetch fresh data
     try {
       this.state.loading = true;
       const videos = await this.fetch(State.currentChannel, this.state.filter);
@@ -4607,7 +4598,6 @@ const Listing = {
         this.render();
       }
     } catch (e) {
-      // If we had no cached data, show empty state
       if (!cached) {
         this.state.items = [];
         if (State.isListingView) {
@@ -4620,7 +4610,6 @@ const Listing = {
     }
   },
 
-  // Add instant update method like rankings/gains
   updateInstant() {
     if (!State.isListingView || !State.currentChannel) return;
 
@@ -4633,7 +4622,6 @@ const Listing = {
     }
   },
 
-  // Add update with fetch method like rankings/gains
   async updateWithFetch() {
     if (!State.isListingView || !State.currentChannel) return;
 
@@ -4808,7 +4796,7 @@ const Listing = {
           .forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.state.filter = btn.dataset.filter;
-        this.updateWithFetch(); // Use the new method instead of refresh
+        this.updateWithFetch(); 
       });
     });
 

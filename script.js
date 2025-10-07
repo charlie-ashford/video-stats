@@ -3452,7 +3452,6 @@ const Search = {
   currentDropdownChannel: 'mrbeast',
 
   _initialUrlHandled: false,
-  _initialKey: null,
 
   handleInput: Dom.debounce(function (e) {
     const dropdown = Dom.get('dropdownList');
@@ -3809,10 +3808,6 @@ const Search = {
   },
 
   handleUrlParams(hasAllVideos) {
-    if (this._initialUrlHandled && hasAllVideos) {
-      return;
-    }
-
     const params = new URLSearchParams(window.location.search);
     const videoId = params.get('data');
     let channelParam = params.get('channel');
@@ -3822,12 +3817,8 @@ const Search = {
       return acc;
     }, {});
 
-    const key = `${videoId || 'none'}|${channelParam || 'none'}`;
-
     if (!this._initialUrlHandled) {
-      this._initialKey = key;
-    } else if (this._initialKey && key === this._initialKey) {
-      return;
+      this._initialUrlHandled = true;
     }
 
     if (videoId === 'rankings') {
@@ -4095,9 +4086,11 @@ const Loader = {
     const key = `channel:${channelId}|${
       showRankings ? 'rank' : showGains ? 'gains' : 'stats'
     }`;
-    if (this._loadedKey === key && !isNavigation) {
-      return;
-    }
+
+    // Remove the early return that was preventing navigation
+    // if (this._loadedKey === key && !isNavigation) {
+    //   return;
+    // }
 
     if (this._loadPromises.has(key)) {
       return this._loadPromises.get(key);
@@ -4107,6 +4100,18 @@ const Loader = {
       State.reset();
       ChartModeDropdown.reset();
       ChartModeDropdown.hide();
+
+      if (State.isListingView) {
+        Listing.state = {
+          items: [],
+          sortKey: 'uploadTime',
+          sortDir: 'desc',
+          filter: 'all',
+          q: '',
+          loading: false,
+        };
+      }
+
       State.currentEntityId = channelId;
       State.currentChannel = channelId;
       State.isRankingsView = showRankings;

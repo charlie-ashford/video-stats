@@ -1409,9 +1409,12 @@ header h1 {
 .listing-table-wrapper {
   width: 100%;
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 800px;
   border-radius: 10px;
   border: 1px solid var(--border-color);
   background: var(--card-background-color);
+  overscroll-behavior: contain;
 }
 
 .listing-table {
@@ -1455,7 +1458,7 @@ header h1 {
 
 .listing-table th.sortable {
   cursor: pointer;
-  position: relative;
+  position: sticky;
   user-select: none;
   padding-right: 2rem;
 }
@@ -2068,6 +2071,10 @@ footer .fa-heart {
     height: 28px;
     font-size: 0.85rem;
   }
+
+  .listing-table-wrapper {
+    max-height: 600px;
+  }
 }
 
 @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px) {
@@ -2487,6 +2494,10 @@ footer .fa-heart {
     min-width: 26px;
     height: 26px;
     font-size: 0.8rem;
+  }
+
+  .listing-table-wrapper {
+    max-height: 500px;
   }
 }
 

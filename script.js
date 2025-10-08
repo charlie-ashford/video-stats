@@ -4813,6 +4813,34 @@ const Listing = {
         }, 150)
       );
     }
+
+    const tableWrapper = document.querySelector('.listing-table-wrapper');
+    if (tableWrapper) {
+      tableWrapper.addEventListener('scroll', e => {
+        if (e.target.scrollTop > 0) {
+          e.target.classList.add('scrolled');
+        } else {
+          e.target.classList.remove('scrolled');
+        }
+      });
+
+      tableWrapper.addEventListener(
+        'wheel',
+        e => {
+          const { scrollTop, scrollHeight, clientHeight } = tableWrapper;
+          const isScrollingUp = e.deltaY < 0;
+          const isScrollingDown = e.deltaY > 0;
+
+          if (
+            (isScrollingUp && scrollTop === 0) ||
+            (isScrollingDown && scrollTop + clientHeight >= scrollHeight)
+          ) {
+            e.preventDefault();
+          }
+        },
+        { passive: false }
+      );
+    }
   },
 
   applySettings() {

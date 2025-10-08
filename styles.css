@@ -1490,6 +1490,26 @@ header h1 {
   background-color: var(--hover-card-background);
 }
 
+.listing-rank-cell {
+  width: 50px;
+  text-align: center !important;
+  padding: 0.5rem !important;
+}
+
+.listing-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  background-color: var(--primary-color);
+  color: white;
+  font-weight: var(--font-weight-bold);
+  font-size: 0.95rem;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 .listing-title-cell .listing-title {
   max-width: 520px;
   overflow: hidden;
@@ -1500,12 +1520,14 @@ header h1 {
 .listing-video-cell {
   max-width: 520px;
 }
+
 .listing-video {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   min-width: 0;
 }
+
 .listing-video-thumb {
   width: 72px;
   height: 40px;
@@ -1514,6 +1536,7 @@ header h1 {
   box-shadow: 0 3px 6px var(--hover-shadow-color);
   flex-shrink: 0;
 }
+
 .listing-video-title {
   color: var(--text-color);
   font-weight: var(--font-weight-medium);
@@ -2039,6 +2062,12 @@ footer .fa-heart {
   .listing-title-cell .listing-title {
     max-width: 280px;
   }
+
+  .listing-rank {
+    min-width: 28px;
+    height: 28px;
+    font-size: 0.85rem;
+  }
 }
 
 @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px) {
@@ -2448,6 +2477,16 @@ footer .fa-heart {
 
   .chart-gains-toggle {
     padding: 0.35rem 0.7rem;
+  }
+
+  .listing-rank-cell {
+    width: 40px;
+  }
+
+  .listing-rank {
+    min-width: 26px;
+    height: 26px;
+    font-size: 0.8rem;
   }
 }
 

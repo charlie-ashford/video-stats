@@ -4569,7 +4569,7 @@ const Listing = {
     const url = `${Config.api.listing}?channel=${channelId}&filter=${filter}`;
 
     try {
-      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000); 
+      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
       if (!data.videos || !Array.isArray(data.videos)) {
         return this.cache.get(cacheKey) || [];
       }
@@ -4683,14 +4683,17 @@ const Listing = {
     );
 
     const frag = document.createDocumentFragment();
-    sorted.forEach(v => {
+    sorted.forEach((v, index) => {
       const tr = document.createElement('tr');
       tr.className = 'listing-row';
       const typeLabel = v.isShort ? 'Short' : 'Long';
-
+      const rank = index + 1;
       tr.innerHTML = `
-     <td class="listing-video-cell">
-       <div class="listing-video">
+	  <td class="listing-rank-cell">
+	    <div class="listing-rank">${rank}</div>
+	  </td>
+	  <td class="listing-video-cell">     
+      <div class="listing-video">
          <img
            class="listing-video-thumb"
            src="${v.thumbnail}"
@@ -4796,7 +4799,7 @@ const Listing = {
           .forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.state.filter = btn.dataset.filter;
-        this.updateWithFetch(); 
+        this.updateWithFetch();
       });
     });
 

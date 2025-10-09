@@ -4637,7 +4637,7 @@ const Listing = {
     const tbody = Dom.get('listingTbody');
     if (tbody) {
       tbody.innerHTML =
-        '<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Updating video list...</td></tr>';
+        '<tr><td colspan="8" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Updating video list...</td></tr>';
     }
 
     const cacheKey = `${State.currentChannel}-${this.state.filter}`;
@@ -4656,7 +4656,7 @@ const Listing = {
     } catch (error) {
       if (tbody && !cached) {
         tbody.innerHTML =
-          '<tr><td colspan="7" style="padding: 1rem; text-align: center; color: red;">Error loading video list. Please try again.</td></tr>';
+          '<tr><td colspan="8" style="padding: 1rem; text-align: center; color: red;">Error loading video list. Please try again.</td></tr>';
       }
     }
   },
@@ -4668,7 +4668,7 @@ const Listing = {
 
     if (this.state.loading && this.state.items.length === 0) {
       tbody.innerHTML =
-        '<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Loading video list...</td></tr>';
+        '<tr><td colspan="8" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Loading video list...</td></tr>';
       return;
     }
 
@@ -4683,7 +4683,7 @@ const Listing = {
         : this.state.items.length === 0
         ? 'No videos available for this filter'
         : 'No videos match the current search';
-      tbody.innerHTML = `<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">${message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">${message}</td></tr>`;
       return;
     }
 

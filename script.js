@@ -2785,6 +2785,7 @@ const Gains = {
   },
 
   getPeriodKey(period) {
+    if (period === 0) return 'past1h';
     if (period === 1) return 'past24h';
     if (period === 3) return 'past3d';
     if (period === 7) return 'past7d';
@@ -2792,6 +2793,7 @@ const Gains = {
   },
 
   getPreviousPeriodKey(period) {
+    if (period === 0) return 'previous1h';
     if (period === 1) return 'previous24h';
     if (period === 3) return 'previous3d';
     if (period === 7) return 'previous7d';
@@ -2849,14 +2851,18 @@ const Gains = {
         percentage !== null ? `${sign}${Math.abs(percentage).toFixed(1)}%` : '';
 
       const periodLabel =
-        State.gainsSettings.period === 1
+        State.gainsSettings.period === 0
+          ? 'in last 1h'
+          : State.gainsSettings.period === 1
           ? 'in last 24h'
           : State.gainsSettings.period === 3
           ? 'in last 3d'
           : 'in last 7d';
-
+      
       const periodLabelGain =
-        State.gainsSettings.period === 1
+        State.gainsSettings.period === 0
+          ? '1h'
+          : State.gainsSettings.period === 1
           ? '24h'
           : State.gainsSettings.period === 3
           ? '3d'
@@ -2909,7 +2915,9 @@ const Gains = {
       State.gainsSettings.metric.charAt(0).toUpperCase() +
       State.gainsSettings.metric.slice(1);
     const periodText =
-      State.gainsSettings.period === 1
+      State.gainsSettings.period === 0
+        ? '1 Hour'
+        : State.gainsSettings.period === 1
         ? '24 Hours'
         : `${State.gainsSettings.period} Days`;
     if (subtitle) {
@@ -3054,9 +3062,10 @@ const Gains = {
 Gains.prefetch = async function (channelId) {
   const metrics = ['views', 'likes'];
   const filters = ['all', 'long', 'short'];
+  const periods = [0, 1, 3, 7];
   try {
     await Promise.allSettled(
-      metrics.flatMap(m => filters.map(f => Gains.fetch(channelId, m, f, 1)))
+      metrics.flatMap(m => filters.map(f => periods.map(p => Gains.fetch(channelId, m, f, p))))
     );
   } catch (e) {}
 };

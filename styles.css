@@ -1503,12 +1503,12 @@ header h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 32px;
+  min-width: 36px;
+  height: 36px;
   background-color: var(--primary-color);
   color: white;
   font-weight: var(--font-weight-bold);
-  font-size: 0.95rem;
+  font-size: 0.8rem;
   border-radius: 50%;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }

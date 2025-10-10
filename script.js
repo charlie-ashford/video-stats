@@ -290,6 +290,7 @@ const State = {
   isListingView: false,
   currentChartMode: Config.defaultChartMode,
   isGainsMode: false,
+  isHourlyGainsMode: false,
   isHourlyMode: false,
   hourlyData: null,
   customDateRangeLabel: null,
@@ -443,21 +444,21 @@ const ChartModeDropdown = {
     this.dropdown = Dom.create('div', 'chart-mode-dropdown');
 
     this.dropdown.innerHTML = `
-    <button class="chart-mode-button" id="chartModeButton">
-      <span class="chart-mode-text"></span>
-      <i class="fas fa-chevron-down chart-mode-arrow"></i>
-    </button>
-    <div class="chart-mode-options" id="chartModeOptions">
-      <!-- options injected dynamically -->
-    </div>
-  `;
+      <button class="chart-mode-button" id="chartModeButton">
+        <span class="chart-mode-text"></span>
+        <i class="fas fa-chevron-down chart-mode-arrow"></i>
+      </button>
+      <div class="chart-mode-options" id="chartModeOptions">
+        <!-- options injected dynamically -->
+      </div>
+    `;
     this.dropdown.style.display = 'none';
 
     this.gainsToggle = Dom.create('button', 'chart-gains-toggle');
     this.gainsToggle.innerHTML = `
-    <i class="fas fa-chart-line"></i>
-    <span>Daily Gains</span>
-  `;
+      <i class="fas fa-chart-line"></i>
+      <span>Daily Gains</span>
+    `;
     this.gainsToggle.style.display = 'none';
 
     const title = chartContainer.querySelector('#videoChart');
@@ -572,6 +573,7 @@ const ChartModeDropdown = {
       if (this.dropdown) this.dropdown.style.display = 'none';
       State.isHourlyMode = false;
       State.isGainsMode = false;
+      State.isHourlyGainsMode = false;
       return false;
     }
 
@@ -614,6 +616,7 @@ const ChartModeDropdown = {
 
     State.currentChartMode = mode;
     State.isGainsMode = false;
+    State.isHourlyGainsMode = false;
     State.isHourlyMode = false;
     State.hourlyData = null;
 
@@ -685,16 +688,32 @@ const ChartModeDropdown = {
   },
 
   async toggleGainsMode() {
-    State.isGainsMode = !State.isGainsMode;
+    const config = State.getChartConfig();
+    const canShowHourlyGains =
+      config.dataPoints === 'hourly' &&
+      config.period !== 'all' &&
+      config.period <= 60;
 
-    this.gainsToggle.classList.toggle('active', State.isGainsMode);
-
-    if (State.isGainsMode) {
+    if (!State.isGainsMode && !State.isHourlyGainsMode) {
+      State.isGainsMode = true;
+      State.isHourlyGainsMode = false;
+      this.gainsToggle.classList.add('active');
       this.gainsToggle.innerHTML = `
         <i class="fas fa-chart-area"></i>
-        <span>Total Data</span>
+        <span>Daily Gains</span>
+      `;
+    } else if (State.isGainsMode && canShowHourlyGains) {
+      State.isGainsMode = false;
+      State.isHourlyGainsMode = true;
+      this.gainsToggle.classList.add('active');
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-clock"></i>
+        <span>Hourly Gains</span>
       `;
     } else {
+      State.isGainsMode = false;
+      State.isHourlyGainsMode = false;
+      this.gainsToggle.classList.remove('active');
       this.gainsToggle.innerHTML = `
         <i class="fas fa-chart-line"></i>
         <span>Daily Gains</span>
@@ -719,11 +738,12 @@ const ChartModeDropdown = {
     } else {
       this.gainsToggle.style.display = 'none';
       State.isGainsMode = false;
+      State.isHourlyGainsMode = false;
       this.gainsToggle.classList.remove('active');
       this.gainsToggle.innerHTML = `
-	      <i class="fas fa-chart-line"></i>
-	      <span>Daily Gains</span>
-	    `;
+        <i class="fas fa-chart-line"></i>
+        <span>Daily Gains</span>
+      `;
     }
 
     const shouldShowDatePicker =
@@ -893,6 +913,7 @@ const ChartModeDropdown = {
   reset() {
     State.currentChartMode = Config.defaultChartMode;
     State.isGainsMode = false;
+    State.isHourlyGainsMode = false;
     State.isHourlyMode = false;
     State.hourlyData = null;
     State.hourlyDateRange = { start: null, end: null };
@@ -913,9 +934,9 @@ const ChartModeDropdown = {
     if (this.gainsToggle) {
       this.gainsToggle.classList.remove('active');
       this.gainsToggle.innerHTML = `
-	      <i class="fas fa-chart-line"></i>
-	      <span>Daily Gains</span>
-	    `;
+        <i class="fas fa-chart-line"></i>
+        <span>Daily Gains</span>
+      `;
     }
 
     CustomDatePicker.reset();
@@ -1273,7 +1294,11 @@ const DataProcessor = {
 
     let points;
 
-    if (State.isGainsMode && metric !== 'uploads') {
+    if (State.isHourlyGainsMode && metric !== 'uploads') {
+      const values = State.processedData.series[metric];
+      const timestamps = State.processedData.timestamps;
+      points = this.processGains(timestamps, values);
+    } else if (State.isGainsMode && metric !== 'uploads') {
       const values = State.processedData.series[metric];
       const timestamps = State.processedData.timestamps;
       points = this.processDailyGains(timestamps, values);
@@ -1377,9 +1402,16 @@ const ChartBuilder = {
       let seriesData;
       let seriesName = config.name;
 
-      if (State.isGainsMode && config.key !== 'uploads') {
+      if (
+        (State.isGainsMode || State.isHourlyGainsMode) &&
+        config.key !== 'uploads'
+      ) {
         seriesData = DataProcessor.getCurrentSeries();
-        seriesName = `Daily ${config.name} Gains`;
+        if (State.isHourlyGainsMode) {
+          seriesName = `Hourly ${config.name} Gains`;
+        } else {
+          seriesName = `Daily ${config.name} Gains`;
+        }
       } else {
         seriesData = DataProcessor.seriesPointsForChart(config.key);
         if (Array.isArray(seriesData) && seriesData.length > 0) {
@@ -1708,6 +1740,8 @@ const ChartBuilder = {
         State.getMetricName().charAt(0).toUpperCase() +
         State.getMetricName().slice(1)
       }`;
+    } else if (State.isHourlyGainsMode && State.getMetricName() !== 'uploads') {
+      metricName = `Hourly ${metric} Gains`;
     } else if (State.isGainsMode && State.getMetricName() !== 'uploads') {
       metricName = `Daily ${metric} Gains`;
     }
@@ -1938,6 +1972,15 @@ const Charts = {
       chartTitle = State.customDateRangeLabel
         ? `${baseTitle} - ${State.customDateRangeLabel}`
         : baseTitle;
+    } else if (State.isHourlyGainsMode) {
+      const metricName =
+        State.getMetricName().charAt(0).toUpperCase() +
+        State.getMetricName().slice(1);
+      const baseTitle = `Hourly ${metricName} Gains`;
+      const modeLabel = State.customDateRangeLabel
+        ? State.customDateRangeLabel
+        : Config.chartModes[State.currentChartMode].label;
+      chartTitle = `${baseTitle} - ${modeLabel}`;
     } else if (State.isGainsMode) {
       const metricName =
         State.getMetricName().charAt(0).toUpperCase() +
@@ -2858,7 +2901,7 @@ const Gains = {
           : State.gainsSettings.period === 3
           ? 'in last 3d'
           : 'in last 7d';
-      
+
       const periodLabelGain =
         State.gainsSettings.period === 0
           ? '1h'
@@ -3065,7 +3108,9 @@ Gains.prefetch = async function (channelId) {
   const periods = [0, 1, 3, 7];
   try {
     await Promise.allSettled(
-      metrics.flatMap(m => filters.map(f => periods.map(p => Gains.fetch(channelId, m, f, p))))
+      metrics.flatMap(m =>
+        filters.map(f => periods.map(p => Gains.fetch(channelId, m, f, p)))
+      )
     );
   } catch (e) {}
 };

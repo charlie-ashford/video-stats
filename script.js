@@ -690,13 +690,13 @@ const ChartModeDropdown = {
   async toggleGainsMode() {
     const config = State.getChartConfig();
     const isChannelContext = State.currentEntityId === State.currentChannel;
-    
+
     const canShowHourlyGains =
-      !isChannelContext && 
+      !isChannelContext &&
       config.dataPoints === 'hourly' &&
       config.period !== 'all' &&
       config.period <= 60;
-  
+
     if (!State.isGainsMode && !State.isHourlyGainsMode) {
       State.isGainsMode = true;
       State.isHourlyGainsMode = false;
@@ -722,7 +722,7 @@ const ChartModeDropdown = {
         <span>Daily Gains</span>
       `;
     }
-  
+
     await Charts.create();
   },
 
@@ -1100,6 +1100,34 @@ const DataProcessor = {
     };
     if (!Array.isArray(rawData)) return processed;
 
+    const isVideoContext = State.currentEntityId !== State.currentChannel;
+    if (isVideoContext && State.videoUploadTime && rawData.length > 0) {
+      const uploadTimestamp = luxon.DateTime.fromISO(State.videoUploadTime)
+        .setZone('America/New_York')
+        .toMillis();
+
+      const firstDataTimestamp = rawData[0].timestamp
+        ? luxon.DateTime.fromISO(rawData[0].timestamp)
+            .setZone('America/New_York')
+            .toMillis()
+        : luxon.DateTime.fromISO(rawData[0].time)
+            .setZone('America/New_York')
+            .toMillis();
+
+      const hoursDiff =
+        (firstDataTimestamp - uploadTimestamp) / (1000 * 60 * 60);
+
+      if (hoursDiff >= 0.5 && hoursDiff <= 1.5) {
+        processed.timestamps.push(uploadTimestamp);
+        processed.series.views.push(0);
+        processed.series.likes.push(0);
+        processed.series.comments.push(0);
+        if (rawData[0].uploadCount !== undefined) {
+          processed.series.uploads.push(0);
+        }
+      }
+    }
+
     rawData.forEach(entry => {
       let timestamp;
       if (entry.timestamp) {
@@ -1314,9 +1342,20 @@ const DataProcessor = {
         const dt = luxon.DateTime.fromMillis(ts, { zone: 'America/New_York' });
         return dt.year === 2025;
       });
+
       if (first2025Index !== -1) {
         const first2025Ts = points[first2025Index][0];
-        points = points.filter(([ts]) => ts !== first2025Ts);
+        const isZeroDatapoint =
+          State.videoUploadTime &&
+          first2025Ts ===
+            luxon.DateTime.fromISO(State.videoUploadTime)
+              .setZone('America/New_York')
+              .toMillis() &&
+          points[first2025Index][1] === 0;
+
+        if (!isZeroDatapoint) {
+          points = points.filter(([ts]) => ts !== first2025Ts);
+        }
       }
     }
 
@@ -1426,7 +1465,17 @@ const ChartBuilder = {
           });
           if (first2025Index !== -1) {
             const first2025Ts = seriesData[first2025Index][0];
-            seriesData = seriesData.filter(([ts]) => ts !== first2025Ts);
+            const isZeroDatapoint =
+              State.videoUploadTime &&
+              first2025Ts ===
+                luxon.DateTime.fromISO(State.videoUploadTime)
+                  .setZone('America/New_York')
+                  .toMillis() &&
+              seriesData[first2025Index][1] === 0;
+
+            if (!isZeroDatapoint) {
+              seriesData = seriesData.filter(([ts]) => ts !== first2025Ts);
+            }
           }
         }
       }

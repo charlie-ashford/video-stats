@@ -689,11 +689,14 @@ const ChartModeDropdown = {
 
   async toggleGainsMode() {
     const config = State.getChartConfig();
+    const isChannelContext = State.currentEntityId === State.currentChannel;
+    
     const canShowHourlyGains =
+      !isChannelContext && 
       config.dataPoints === 'hourly' &&
       config.period !== 'all' &&
       config.period <= 60;
-
+  
     if (!State.isGainsMode && !State.isHourlyGainsMode) {
       State.isGainsMode = true;
       State.isHourlyGainsMode = false;
@@ -719,7 +722,7 @@ const ChartModeDropdown = {
         <span>Daily Gains</span>
       `;
     }
-
+  
     await Charts.create();
   },
 

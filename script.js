@@ -66,7 +66,12 @@ const Config = {
     {
       id: 'taylor',
       name: 'Taylor Swift',
-      avatar: 'https://www.banner.yt/UCANLZYMidaCbLQFWXBC95Jg/avatar',
+      avatar: 'https://www.banner.yt/UCqECaJ8Gagnn7YCbPEzWH6g/avatar',
+    },
+    {
+      id: 'taylornation',
+      name: 'Taylor Nation',
+      avatar: 'https://www.banner.yt/UC5Nh0Elc5d1sQ8NvirFBKOQ/avatar',
     },
     {
       id: 'cocomelon',

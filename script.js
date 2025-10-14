@@ -161,7 +161,7 @@ const Config = {
 const Net = {
   inflight: new Map(),
   cache: new Map(),
-  defaultTtl: 5 * 60 * 1000,
+  defaultTtl: 10 * 60 * 1000,
 
   getTenMinuteAlignedExpiryMs(minMs = 10000) {
     const nowMs = Date.now();
@@ -686,7 +686,7 @@ const ChartModeDropdown = {
   async fetchHourlyData(videoId, channel, startDate, endDate) {
     const url = Config.api.hourly(videoId, channel, startDate, endDate);
     try {
-      return await Net.fetchJson(url, {}, 5 * 60 * 1000);
+      return await Net.fetchJson(url, {}, 10 * 60 * 1000);
     } catch (error) {
       throw error;
     }
@@ -2481,7 +2481,7 @@ const Rankings = {
     const url = `${Config.api.rankings}?channel=${channelId}&filter=${filter}`;
 
     try {
-      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
+      const data = await Net.fetchJson(url, {}, 10 * 60 * 1000);
       if (!data.videos || !Array.isArray(data.videos)) {
         return State.cachedRankings.get(cacheKey) || [];
       }
@@ -2872,7 +2872,7 @@ const Gains = {
     const url = `${Config.api.gains}?channel=${channelId}&metric=${metric}&filter=${filter}`;
 
     try {
-      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
+      const data = await Net.fetchJson(url, {}, 10 * 60 * 1000);
       if (!data.videos || !Array.isArray(data.videos)) {
         return this.allVideosCache.get(cacheKey) || [];
       }
@@ -4032,7 +4032,7 @@ const Search = {
       const data = await Net.fetchJson(
         Config.api.videos.byChannel('mrbeast'),
         {},
-        5 * 60 * 1000
+        10 * 60 * 1000
       );
 
       if (
@@ -4348,7 +4348,11 @@ const Loader = {
               ? Config.api.combinedHistory.mrbeast
               : Config.api.combinedHistory.byChannel(channelId);
 
-          const combinedData = await Net.fetchJson(endpoint, {}, 5 * 60 * 1000);
+          const combinedData = await Net.fetchJson(
+            endpoint,
+            {},
+            10 * 60 * 1000
+          );
 
           if (Array.isArray(combinedData)) {
             State.rawData = combinedData;
@@ -4515,10 +4519,10 @@ const Loader = {
         let endpoint = Config.api.videoStats.byChannel(channelId, videoId);
         let video = null;
         try {
-          video = await Net.fetchJson(endpoint, {}, 5 * 60 * 1000);
+          video = await Net.fetchJson(endpoint, {}, 10 * 60 * 1000);
         } catch (e) {
           endpoint = Config.api.videoStats.base + videoId;
-          video = await Net.fetchJson(endpoint, {}, 5 * 60 * 1000);
+          video = await Net.fetchJson(endpoint, {}, 10 * 60 * 1000);
         }
 
         if (video?.stats && Array.isArray(video.stats)) {
@@ -4680,7 +4684,7 @@ const Listing = {
     const url = `${Config.api.listing}?channel=${channelId}&filter=${filter}`;
 
     try {
-      const data = await Net.fetchJson(url, {}, 5 * 60 * 1000);
+      const data = await Net.fetchJson(url, {}, 10 * 60 * 1000);
       if (!data.videos || !Array.isArray(data.videos)) {
         return this.cache.get(cacheKey) || [];
       }

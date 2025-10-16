@@ -74,6 +74,11 @@ const Config = {
       avatar: 'https://www.banner.yt/UC5Nh0Elc5d1sQ8NvirFBKOQ/avatar',
     },
     {
+      id: 'pewdiepie',
+      name: 'PewDiePie',
+      avatar: 'https://www.banner.yt/UC-lHJZR3Gqxm24_Vd_AJ5Yw/avatar',
+    },
+    {
       id: 'cocomelon',
       name: 'Cocomelon - Nursery Rhymes',
       avatar: 'https://www.banner.yt/UCbCmjCuTUZos6Inko4u57UQ/avatar',

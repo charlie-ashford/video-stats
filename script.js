@@ -110,7 +110,7 @@ const Config = {
   },
   gains: {
     defaultPeriod: 1,
-    defaultFilter: 'short',
+    defaultFilter: 'long',
     defaultMetric: 'likes',
     defaultCount: 10,
     minCount: 3,

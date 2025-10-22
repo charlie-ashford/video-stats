@@ -287,6 +287,92 @@ header h1 {
   transition: filter 0.3s;
 }
 
+.export-controls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-button:focus-visible {
+  outline: 3px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.export-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background-color: var(--card-background-color);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  min-width: 220px;
+  box-shadow: 0 12px 24px var(--hover-shadow-color);
+  padding: 6px;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 140ms ease;
+  z-index: 1000;
+  will-change: opacity, transform;
+}
+
+.export-menu[aria-hidden='true'] {
+  visibility: hidden;
+}
+
+.export-menu.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.export-menu::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: 22px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid var(--card-background-color);
+  filter: drop-shadow(0 -1px 0 var(--border-color));
+}
+
+.export-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 0.95rem;
+  text-align: left;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.export-menu-item .item-icon {
+  font-size: 1rem;
+  width: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.export-menu .export-menu-item:hover,
+.export-menu .export-menu-item:focus-visible {
+  background-color: var(--hover-background-color);
+  color: var(--hover-text-color);
+  outline: none;
+}
+
 .video-stats-view {
   width: 100%;
   max-width: 1280px;
@@ -2074,6 +2160,10 @@ footer .fa-heart {
 
   .listing-table-wrapper {
     max-height: 600px;
+  }
+
+  .export-controls {
+    margin-top: 8px;
   }
 }
 

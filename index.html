@@ -116,18 +116,37 @@
             id="themeIcon"
           />
         </button>
-        <button
-          class="export-button"
-          id="exportButton"
-          role="button"
-          aria-label="Export data"
-        >
-          <img
-            src="https://img.icons8.com/material-outlined/24/ffffff/download.png"
-            alt="Export Data Icon"
-            id="exportIcon"
-          />
-        </button>
+
+        <div class="export-controls">
+          <button
+            class="export-button"
+            id="exportButton"
+            role="button"
+            aria-label="Export data"
+            aria-expanded="false"
+            title="Export CSV"
+          >
+            <img
+              src="https://img.icons8.com/material-outlined/24/ffffff/download.png"
+              alt="Export Data Icon"
+              id="exportIcon"
+            />
+          </button>
+          <div id="exportMenu" class="export-menu" aria-hidden="true">
+            <button class="export-menu-item" data-mode="hourly">
+              <span class="item-icon">
+                <i class="fas fa-clock"></i>
+              </span>
+              Export Hourly CSV
+            </button>
+            <button class="export-menu-item" data-mode="daily">
+              <span class="item-icon">
+                <i class="fas fa-calendar-day"></i>
+              </span>
+              Export Daily CSV
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -239,7 +258,7 @@
               <span class="button-group-label">Time Period:</span>
               <button
                 class="control-button"
-                data-period="0.04"
+                data-period="0"
                 data-group="period"
               >
                 1 Hour
@@ -307,6 +326,24 @@
                 data-group="metric"
               >
                 Likes
+              </button>
+            </div>
+
+            <div class="button-group">
+              <span class="button-group-label">Sort by:</span>
+              <button
+                class="control-button active"
+                data-sort="absolute"
+                data-group="sort"
+              >
+                Total
+              </button>
+              <button
+                class="control-button"
+                data-sort="percent"
+                data-group="sort"
+              >
+                % Increase
               </button>
             </div>
           </div>

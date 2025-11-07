@@ -65,6 +65,11 @@ const Config = {
       avatar: 'https://www.banner.yt/UCzfPgw5WN9bvMiBz-JJYVyw/avatar',
     },
     {
+      id: 'viewstats',
+      name: 'Viewstats',
+      avatar: 'https://www.banner.yt/UCkop5qDbuFV_kBZC0Z_vakQ/avatar',
+    },
+    {
       id: 'taylor',
       name: 'Taylor Swift',
       avatar: 'https://www.banner.yt/UCqECaJ8Gagnn7YCbPEzWH6g/avatar',

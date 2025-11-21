@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <title>Communitrics Video Stats</title>
 
     <meta
@@ -64,12 +67,14 @@
     />
     <link
       rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
     />
+
     <link rel="preconnect" href="https://api.communitrics.com" crossorigin />
     <link rel="preconnect" href="https://code.highcharts.com" />
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
     <link rel="dns-prefetch" href="https://img.icons8.com" />
     <link rel="preconnect" href="https://img.icons8.com" />
 
@@ -89,26 +94,16 @@
       <div class="header-left">
         <h1>Video Analytics</h1>
       </div>
+
       <div class="header-controls">
-        <div class="search-bar">
-          <input
-            type="text"
-            id="searchInput"
-            placeholder="Search and select a video or channel.."
-            autocomplete="off"
-            autocorrect="off"
-          />
-          <div class="search-icon">
-            <i class="fas fa-search"></i>
-          </div>
-          <div class="dropdown-list" id="dropdownList" role="listbox"></div>
-        </div>
         <div class="mobile-buttons"></div>
+
         <button
           class="theme-toggle"
           id="themeToggle"
           role="button"
           aria-label="Toggle dark mode"
+          title="Toggle theme"
         >
           <img
             src="https://img.icons8.com/material-outlined/24/ffffff/contrast.png"
@@ -134,15 +129,11 @@
           </button>
           <div id="exportMenu" class="export-menu" aria-hidden="true">
             <button class="export-menu-item" data-mode="hourly">
-              <span class="item-icon">
-                <i class="fas fa-clock"></i>
-              </span>
+              <span class="item-icon"><i class="fas fa-clock"></i></span>
               Export Hourly CSV
             </button>
             <button class="export-menu-item" data-mode="daily">
-              <span class="item-icon">
-                <i class="fas fa-calendar-day"></i>
-              </span>
+              <span class="item-icon"><i class="fas fa-calendar-day"></i></span>
               Export Daily CSV
             </button>
           </div>
@@ -150,7 +141,178 @@
       </div>
     </header>
 
-    <div id="rankingsView" class="rankings-view" style="display: none">
+    <nav id="channelsBar" class="channels-bar" aria-label="Channels"></nav>
+
+    <section id="channelHeader" class="channel-header" style="display: none">
+      <div class="channel-identity">
+        <img
+          id="channelAvatar"
+          class="channel-avatar"
+          src=""
+          alt="Channel avatar"
+          loading="eager"
+        />
+        <div class="channel-meta">
+          <h2 id="channelName" class="channel-name">Channel</h2>
+        </div>
+      </div>
+
+      <div id="channelTabs" class="channel-tabs" role="tablist"></div>
+    </section>
+
+    <section
+      id="channelVideosView"
+      class="listing-view"
+      style="display: none"
+      aria-labelledby="tab-videos"
+    >
+      <div class="listing-controls videos-controls">
+        <div class="gains-button-groups" style="margin-bottom: 0.5rem">
+          <div class="button-group">
+            <span class="button-group-label">Video Type:</span>
+            <button
+              class="control-button videos-filter-button active"
+              data-filter="all"
+            >
+              All
+            </button>
+            <button
+              class="control-button videos-filter-button"
+              data-filter="long"
+            >
+              Long
+            </button>
+            <button
+              class="control-button videos-filter-button"
+              data-filter="short"
+            >
+              Shorts
+            </button>
+          </div>
+
+          <div class="button-group">
+            <span class="button-group-label">Sort:</span>
+            <button
+              class="control-button videos-sort-button active"
+              data-sort="uploadTime"
+              data-dir="desc"
+            >
+              Newest
+            </button>
+            <button
+              class="control-button videos-sort-button"
+              data-sort="views"
+              data-dir="desc"
+            >
+              Views
+            </button>
+            <button
+              class="control-button videos-sort-button"
+              data-sort="likes"
+              data-dir="desc"
+            >
+              Likes
+            </button>
+          </div>
+
+          <div class="button-group search-group">
+            <span class="button-group-label">Search:</span>
+            <input
+              id="videosSearchInput"
+              type="text"
+              placeholder="Search videos in channel..."
+              class="listing-search-input"
+              autocomplete="off"
+              autocorrect="off"
+              aria-label="Search videos"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="listing-panel">
+        <div class="listing-header">
+          <h2>Videos</h2>
+          <p id="videosSubtitle" class="listing-subtitle"></p>
+        </div>
+
+        <div id="videosGrid" class="videos-grid" aria-live="polite"></div>
+        <div
+          id="videosGridEmpty"
+          class="videos-grid-empty"
+          style="display: none"
+        >
+          No videos match the current filters.
+        </div>
+      </div>
+    </section>
+
+    <section id="videoStatsView" class="video-stats-view">
+      <div id="videoInfoCard" class="video-info-card" style="display: none">
+        <img
+          id="videoThumbnail"
+          class="video-thumbnail"
+          src=""
+          alt="Video Thumbnail"
+        />
+        <div class="video-details">
+          <h2 id="videoTitle" class="video-title">
+            <a id="videoLink" href="#" target="_blank" rel="noopener"
+              >Video Title</a
+            >
+          </h2>
+          <p id="uploadDate" class="video-upload-date">Uploaded: YYYY-MM-DD</p>
+          <p id="videoDuration" class="video-duration">Duration: 00:00</p>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <h3><i class="fas fa-eye"></i> Views</h3>
+          <div id="totalViews" class="odometer">0</div>
+        </div>
+        <div class="stat-card">
+          <h3><i class="fas fa-thumbs-up"></i> Likes</h3>
+          <div id="totalLikes" class="odometer">0</div>
+        </div>
+        <div class="stat-card">
+          <h3><i class="fas fa-comments"></i> Comments</h3>
+          <div id="totalComments" class="odometer">0</div>
+        </div>
+        <div class="stat-card" id="uploadCountCard" style="display: none">
+          <h3><i class="fas fa-upload"></i> Uploads</h3>
+          <div id="totalUploads" class="odometer">0</div>
+        </div>
+      </div>
+
+      <div class="chart-container">
+        <div id="videoChart" style="width: 100%; height: 100%"></div>
+      </div>
+
+      <div id="dailyStatsTable" class="daily-stats-table" style="display: none">
+        <h3>Daily Statistics</h3>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Date (EST)</th>
+                <th>Views</th>
+                <th>Likes</th>
+                <th>Comments</th>
+              </tr>
+            </thead>
+            <tbody id="dailyStatsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section
+      id="rankingsView"
+      class="rankings-view"
+      style="display: none"
+      aria-labelledby="tab-rankings"
+    >
       <div class="rankings-controls">
         <div class="rankings-toolbar">
           <div class="slider-controls">
@@ -180,10 +342,7 @@
             </div>
           </div>
 
-          <div
-            class="rankings-button-groups"
-            style="display: flex; gap: 2rem; margin-top: 1rem; flex-wrap: wrap"
-          >
+          <div class="rankings-button-groups">
             <div class="button-group">
               <span class="button-group-label">Video Type:</span>
               <button
@@ -232,9 +391,14 @@
         </div>
         <div class="rankings-list" id="rankingsList"></div>
       </div>
-    </div>
+    </section>
 
-    <div id="gainsView" class="gains-view" style="display: none">
+    <section
+      id="gainsView"
+      class="gains-view"
+      style="display: none"
+      aria-labelledby="tab-gains"
+    >
       <div class="gains-controls">
         <div class="gains-toolbar">
           <div class="gains-controls-row">
@@ -357,9 +521,14 @@
         </div>
         <div class="gains-list" id="gainsList"></div>
       </div>
-    </div>
+    </section>
 
-    <div id="listingView" class="listing-view" style="display: none">
+    <section
+      id="listingView"
+      class="listing-view"
+      style="display: none"
+      aria-labelledby="tab-listing"
+    >
       <div class="listing-controls">
         <div class="gains-button-groups" style="margin-bottom: 1rem">
           <div class="button-group">
@@ -383,7 +552,7 @@
               Shorts
             </button>
           </div>
-          <div class="button-group" style="gap: 0.75rem">
+          <div class="button-group search-group">
             <span class="button-group-label">Search:</span>
             <input
               id="listingSearchInput"
@@ -422,65 +591,7 @@
           </table>
         </div>
       </div>
-    </div>
-
-    <div id="videoStatsView" class="video-stats-view">
-      <div id="videoInfoCard" class="video-info-card" style="display: none">
-        <img
-          id="videoThumbnail"
-          class="video-thumbnail"
-          src=""
-          alt="Video Thumbnail"
-        />
-        <div class="video-details">
-          <h2 id="videoTitle" class="video-title">
-            <a id="videoLink" href="#" target="_blank">Video Title</a>
-          </h2>
-          <p id="uploadDate" class="video-upload-date">Uploaded: YYYY-MM-DD</p>
-          <p id="videoDuration" class="video-duration">Duration: 00:00</p>
-        </div>
-      </div>
-
-      <div class="stats-grid">
-        <div class="stat-card">
-          <h3><i class="fas fa-eye"></i> Views</h3>
-          <div id="totalViews" class="odometer">0</div>
-        </div>
-        <div class="stat-card">
-          <h3><i class="fas fa-thumbs-up"></i> Likes</h3>
-          <div id="totalLikes" class="odometer">0</div>
-        </div>
-        <div class="stat-card">
-          <h3><i class="fas fa-comments"></i> Comments</h3>
-          <div id="totalComments" class="odometer">0</div>
-        </div>
-        <div class="stat-card" id="uploadCountCard" style="display: none">
-          <h3><i class="fas fa-upload"></i> Uploads</h3>
-          <div id="totalUploads" class="odometer">0</div>
-        </div>
-      </div>
-
-      <div class="chart-container">
-        <div id="videoChart" style="width: 100%; height: 100%"></div>
-      </div>
-
-      <div id="dailyStatsTable" class="daily-stats-table" style="display: none">
-        <h3>Daily Statistics</h3>
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Date (EST)</th>
-                <th>Views</th>
-                <th>Likes</th>
-                <th>Comments</th>
-              </tr>
-            </thead>
-            <tbody id="dailyStatsBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    </section>
 
     <footer>
       <p>
@@ -490,11 +601,13 @@
         >
       </p>
     </footer>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
     <script src="https://code.highcharts.com/12.1/highcharts.js"></script>
     <script src="https://code.highcharts.com/12.1/modules/boost.js"></script>
     <script src="https://code.highcharts.com/12.1/modules/accessibility.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+
     <script src="script.js"></script>
   </body>
 </html>

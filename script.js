@@ -187,16 +187,13 @@ const Net = {
 
   async fetchJson(url, options = {}, _ttlIgnored = null) {
     const now = Date.now();
-
     const cached = this.cache.get(url);
     if (cached && now < cached.expiry) {
       return cached.data;
     }
-
     if (this.inflight.has(url)) {
       return this.inflight.get(url);
     }
-
     const cachedBeforeFetch = cached;
 
     const p = fetch(url, options)
@@ -249,19 +246,15 @@ const SessionSettings = {
       console.warn('Failed to save rankings settings:', error);
     }
   },
-
   getRankingsSettings() {
     try {
       const stored = sessionStorage.getItem('rankingsSettings');
-      if (stored) {
-        return JSON.parse(stored);
-      }
+      if (stored) return JSON.parse(stored);
     } catch (error) {
       console.warn('Failed to load rankings settings:', error);
     }
     return null;
   },
-
   setGainsSettings(settings) {
     try {
       sessionStorage.setItem('gainsSettings', JSON.stringify(settings));
@@ -269,19 +262,15 @@ const SessionSettings = {
       console.warn('Failed to save gains settings:', error);
     }
   },
-
   getGainsSettings() {
     try {
       const stored = sessionStorage.getItem('gainsSettings');
-      if (stored) {
-        return JSON.parse(stored);
-      }
+      if (stored) return JSON.parse(stored);
     } catch (error) {
       console.warn('Failed to load gains settings:', error);
     }
     return null;
   },
-
   clear() {
     try {
       sessionStorage.removeItem('rankingsSettings');
@@ -302,23 +291,23 @@ const State = {
   selectedMetricIndex: 0,
   isChartReady: false,
   pendingYAxisRange: null,
+
   isRankingsView: false,
   isGainsView: false,
   isListingView: false,
+  isVideosGridView: false,
+
   currentChartMode: Config.defaultChartMode,
   isGainsMode: false,
   isHourlyGainsMode: false,
   isHourlyMode: false,
   hourlyData: null,
   customDateRangeLabel: null,
-  hourlyDateRange: {
-    start: null,
-    end: null,
-  },
-  customDateRange: {
-    start: null,
-    end: null,
-  },
+
+  hourlyDateRange: { start: null, end: null },
+  customDateRange: { start: null, end: null },
+  persistedRange: null,
+
   chartModeData: new Map(),
   rankingsSettings: {
     videoCount: Config.rankings.defaultCount,
@@ -336,20 +325,25 @@ const State = {
   cachedRankings: new Map(),
   cachedGains: new Map(),
   lastFetchTime: 0,
-
   _currentLoadKey: null,
   _dailyCache: null,
   _loadedKey: null,
   _loadPromises: new Map(),
+  currentTab: 'combined',
 
-  persistedRange: null,
+  videosGrid: {
+    items: [],
+    filter: 'all',
+    sortKey: 'uploadTime',
+    sortDir: 'desc',
+    q: '',
+  },
 
   loadSettings() {
     const savedRankings = SessionSettings.getRankingsSettings();
     if (savedRankings) {
       this.rankingsSettings = { ...this.rankingsSettings, ...savedRankings };
     }
-
     const savedGains = SessionSettings.getGainsSettings();
     if (savedGains) {
       this.gainsSettings = { ...this.gainsSettings, ...savedGains };
@@ -373,15 +367,12 @@ const State = {
     if (w <= bp.desktop) return 'desktop';
     return 'large';
   },
-
   isMobile() {
     return this.getBreakpoint() === 'mobile';
   },
-
   getMaxDataPoints() {
     return Config.responsive.maxDataPoints[this.getBreakpoint()];
   },
-
   getChartHeight() {
     return Config.responsive.chartHeights[this.getBreakpoint()];
   },
@@ -392,28 +383,23 @@ const State = {
       'views'
     );
   },
-
   isNumericMetric() {
     return this.selectedMetricIndex < 3;
   },
-
   getChartConfig() {
     return (
       Config.chartModes[this.currentChartMode] ||
       Config.chartModes[Config.defaultChartMode]
     );
   },
-
   shouldUseHourlyData() {
     const config = this.getChartConfig();
     return config.dataPoints === 'hourly';
   },
-
   shouldUseDailyData() {
     const config = this.getChartConfig();
     return config.dataPoints === 'daily';
   },
-
   shouldUseHourlyChart() {
     const config = this.getChartConfig();
     return config.dataPoints === 'hourly-chart';
@@ -429,6 +415,9 @@ const State = {
     this.isGainsMode = false;
     this.isHourlyMode = false;
     this.isListingView = false;
+    this.isVideosGridView = false;
+    this.isRankingsView = false;
+    this.isGainsView = false;
     this.hourlyData = null;
     this.hourlyDateRange = { start: null, end: null };
     this.customDateRange = { start: null, end: null };
@@ -438,538 +427,36 @@ const State = {
   },
 };
 
-const ChartModeDropdown = {
-  dropdown: null,
-  gainsToggle: null,
-  _lastAvailableModes: null,
-  _isRefreshing: false,
+const ScrollState = {
+  positions: new Map(),
 
-  hasRenderableChart() {
-    return (
-      !State.isRankingsView &&
-      !State.isGainsView &&
-      !!State.chart &&
-      (!State.isHourlyMode
-        ? (State.processedData?.timestamps?.length || 0) > 0
-        : !!State.hourlyData?.dates?.length)
-    );
+  _key(view, channelId) {
+    return `${view}:${channelId}`;
   },
 
-  create() {
-    if (this.dropdown) return this.dropdown;
-
-    const chartContainer = document.querySelector('.chart-container');
-    if (!chartContainer) return null;
-
-    this.dropdown = Dom.create('div', 'chart-mode-dropdown');
-
-    this.dropdown.innerHTML = `
-      <button class="chart-mode-button" id="chartModeButton">
-        <span class="chart-mode-text"></span>
-        <i class="fas fa-chevron-down chart-mode-arrow"></i>
-      </button>
-      <div class="chart-mode-options" id="chartModeOptions">
-      </div>
-    `;
-    this.dropdown.style.display = 'none';
-
-    this.gainsToggle = Dom.create('button', 'chart-gains-toggle');
-    this.gainsToggle.innerHTML = `
-      <i class="fas fa-chart-line"></i>
-      <span>Daily Gains</span>
-    `;
-    this.gainsToggle.style.display = 'none';
-
-    const title = chartContainer.querySelector('#videoChart');
-    if (title && title.parentElement) {
-      title.parentElement.insertBefore(this.dropdown, title);
-      title.parentElement.insertBefore(this.gainsToggle, title);
-    }
-
-    const availableModes = this.getAvailableChartModes();
-    this.renderOptions(availableModes);
-    this.renderSelectedLabel();
-    this.ensureModeSupported();
-
-    this.bindEvents();
-    return this.dropdown;
+  save(view, channelId) {
+    const y = window.scrollY || window.pageYOffset || 0;
+    this.positions.set(this._key(view, channelId), y);
   },
 
-  getAvailableChartModes() {
-    const isChannelContext = State.currentEntityId === State.currentChannel;
-    const isCommentsMetric = State.getMetricName() === 'comments';
+  restore(view, channelId) {
+    const key = this._key(view, channelId);
+    if (!this.positions.has(key)) return false;
 
-    const modes = { ...Config.chartModes };
-
-    if (isChannelContext || isCommentsMetric) {
-      delete modes['7dh'];
+    const y = this.positions.get(key);
+    if (typeof y === 'number') {
+      window.scrollTo(0, y);
+      return true;
     }
-
-    return modes;
+    return false;
   },
 
-  bindEvents() {
-    if (!this.dropdown || !this.gainsToggle) return;
-
-    const button = this.dropdown.querySelector('#chartModeButton');
-    const options = this.dropdown.querySelector('#chartModeOptions');
-
-    button.addEventListener('click', e => {
-      e.stopPropagation();
-      options.classList.toggle('show');
-      button.querySelector('.chart-mode-arrow').classList.toggle('rotated');
-    });
-
-    document.addEventListener('click', e => {
-      if (!this.dropdown.contains(e.target)) {
-        options.classList.remove('show');
-        button.querySelector('.chart-mode-arrow').classList.remove('rotated');
-      }
-    });
-
-    options.addEventListener('click', e => {
-      const option = e.target.closest('.chart-mode-option');
-      if (!option) return;
-
-      const available = this.getAvailableChartModes();
-      const mode = option.dataset.mode;
-
-      if (!available[mode]) return;
-      if (mode === State.currentChartMode) return;
-
-      this.selectMode(mode);
-      options.classList.remove('show');
-      button.querySelector('.chart-mode-arrow').classList.remove('rotated');
-    });
-
-    this.gainsToggle.addEventListener('click', () => {
-      this.toggleGainsMode();
-    });
+  has(view, channelId) {
+    return this.positions.has(this._key(view, channelId));
   },
 
-  renderOptions(availableModes) {
-    if (!this.dropdown) return;
-    const optionsEl = this.dropdown.querySelector('#chartModeOptions');
-    if (!optionsEl) return;
-
-    const markup = Object.entries(availableModes)
-      .map(
-        ([key, config]) => `
-        <div class="chart-mode-option" data-mode="${key}">
-          ${config.label}
-        </div>
-      `
-      )
-      .join('');
-    optionsEl.innerHTML = markup;
-    this._lastAvailableModes = JSON.stringify(Object.keys(availableModes));
-  },
-
-  renderSelectedLabel() {
-    if (!this.dropdown) return;
-    const txt = this.dropdown.querySelector('.chart-mode-text');
-    const mode = State.currentChartMode;
-    const cfg =
-      Config.chartModes[mode] || Config.chartModes[Config.defaultChartMode];
-    if (txt) txt.textContent = cfg.label;
-  },
-
-  async ensureModeSupported() {
-    const available = this.getAvailableChartModes();
-    if (available[State.currentChartMode]) {
-      this.renderSelectedLabel();
-      this.updateGainsToggleVisibility();
-      return false;
-    }
-
-    let fallback = Config.defaultChartMode;
-    if (!available[fallback]) {
-      const keys = Object.keys(available);
-      fallback = keys.length ? keys[0] : null;
-    }
-
-    if (!fallback) {
-      if (this.dropdown) this.dropdown.style.display = 'none';
-      State.isHourlyMode = false;
-      State.isGainsMode = false;
-      State.isHourlyGainsMode = false;
-      return false;
-    }
-
-    await this.selectMode(fallback);
-    return true;
-  },
-
-  async refresh() {
-    if (!this.dropdown) this.create();
-    if (!this.dropdown) return false;
-    if (this._isRefreshing) return false;
-
-    this._isRefreshing = true;
-
-    const availableNow = this.getAvailableChartModes();
-    const currentSig = JSON.stringify(Object.keys(availableNow));
-    const changed = currentSig !== this._lastAvailableModes;
-
-    if (changed) {
-      this.renderOptions(availableNow);
-    }
-
-    const didChangeMode = await this.ensureModeSupported();
-
-    this.updateGainsToggleVisibility();
-
-    if (this.dropdown) {
-      this.dropdown.style.display = this.hasRenderableChart()
-        ? 'block'
-        : 'none';
-    }
-
-    this._isRefreshing = false;
-    return didChangeMode;
-  },
-
-  async selectMode(mode) {
-    State.customDateRange = { start: null, end: null };
-    State.customDateRangeLabel = null;
-
-    State.currentChartMode = mode;
-    State.isGainsMode = false;
-    State.isHourlyGainsMode = false;
-    State.isHourlyMode = false;
-    State.hourlyData = null;
-
-    this.renderSelectedLabel();
-
-    this.gainsToggle.classList.remove('active');
-    this.gainsToggle.innerHTML = `
-      <i class="fas fa-chart-line"></i>
-      <span>Daily Gains</span>
-    `;
-
-    this.updateGainsToggleVisibility();
-
-    const config = Config.chartModes[mode];
-
-    if (config.dataPoints === 'hourly-chart') {
-      await this.loadHourlyChart();
-    } else {
-      await this.loadAndDisplayData();
-    }
-  },
-
-  async loadHourlyChart() {
-    const container = Dom.get('videoChart');
-    if (container) {
-      container.innerHTML =
-        '<div style="text-align:center;padding:20px;">Loading hourly chart data...</div>';
-    }
-
-    try {
-      if (!State.hourlyData) {
-        this.setDefaultDates();
-        const data = await this.fetchHourlyData(
-          State.currentEntityId,
-          State.currentChannel,
-          State.hourlyDateRange.start,
-          State.hourlyDateRange.end
-        );
-        State.hourlyData = data;
-      }
-
-      State.isHourlyMode = true;
-      await Charts.create();
-    } catch (error) {
-      console.error('Error loading hourly chart:', error);
-      State.isHourlyMode = false;
-      if (container) {
-        container.innerHTML =
-          '<div style="text-align:center;padding:20px;color:red;">Error loading hourly chart. This video may not have enough data yet.</div>';
-      }
-    }
-  },
-
-  setDefaultDates() {
-    const end = luxon.DateTime.now().setZone('America/New_York');
-    const start = end.minus({ days: Config.hourly.defaultDays });
-
-    State.hourlyDateRange.start = start.toISODate();
-    State.hourlyDateRange.end = end.toISODate();
-  },
-
-  async fetchHourlyData(videoId, channel, startDate, endDate) {
-    const url = Config.api.hourly(videoId, channel, startDate, endDate);
-    try {
-      return await Net.fetchJson(url, {}, 10 * 60 * 1000);
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  async toggleGainsMode() {
-    const config = State.getChartConfig();
-    const isChannelContext = State.currentEntityId === State.currentChannel;
-
-    const canShowHourlyGains =
-      !isChannelContext &&
-      config.dataPoints === 'hourly' &&
-      config.period !== 'all' &&
-      config.period <= 60;
-
-    if (!State.isGainsMode && !State.isHourlyGainsMode) {
-      State.isGainsMode = true;
-      State.isHourlyGainsMode = false;
-      this.gainsToggle.classList.add('active');
-      this.gainsToggle.innerHTML = `
-        <i class="fas fa-chart-area"></i>
-        <span>Daily Gains</span>
-      `;
-    } else if (State.isGainsMode && canShowHourlyGains) {
-      State.isGainsMode = false;
-      State.isHourlyGainsMode = true;
-      this.gainsToggle.classList.add('active');
-      this.gainsToggle.innerHTML = `
-        <i class="fas fa-clock"></i>
-        <span>Hourly Gains</span>
-      `;
-    } else {
-      State.isGainsMode = false;
-      State.isHourlyGainsMode = false;
-      this.gainsToggle.classList.remove('active');
-      this.gainsToggle.innerHTML = `
-        <i class="fas fa-chart-line"></i>
-        <span>Daily Gains</span>
-      `;
-    }
-
-    await Charts.create();
-  },
-
-  updateGainsToggleVisibility() {
-    const config = State.getChartConfig();
-    const hasRenderable = this.hasRenderableChart();
-
-    const canShowGains =
-      !State.isRankingsView &&
-      !State.isGainsView &&
-      config.dataPoints !== 'hourly-chart' &&
-      hasRenderable;
-
-    if (canShowGains) {
-      this.gainsToggle.style.display = 'flex';
-    } else {
-      this.gainsToggle.style.display = 'none';
-      State.isGainsMode = false;
-      State.isHourlyGainsMode = false;
-      this.gainsToggle.classList.remove('active');
-      this.gainsToggle.innerHTML = `
-        <i class="fas fa-chart-line"></i>
-        <span>Daily Gains</span>
-      `;
-    }
-
-    const shouldShowDatePicker =
-      config.customizable &&
-      !State.isRankingsView &&
-      !State.isGainsView &&
-      hasRenderable;
-
-    if (shouldShowDatePicker) {
-      if (!CustomDatePicker.datePickerButton) {
-        CustomDatePicker.createDatePickerButton();
-      }
-      if (CustomDatePicker.datePickerButton) {
-        CustomDatePicker.datePickerButton.classList.add('show');
-        CustomDatePicker.datePickerButton.style.display = 'flex';
-      }
-    } else {
-      if (CustomDatePicker.datePickerButton) {
-        CustomDatePicker.datePickerButton.classList.remove('show');
-        CustomDatePicker.datePickerButton.style.display = 'none';
-      }
-    }
-  },
-
-  async loadAndDisplayData() {
-    const container = Dom.get('videoChart');
-    if (container) {
-      container.innerHTML =
-        '<div style="text-align:center;padding:20px;">Loading chart data...</div>';
-    }
-
-    try {
-      const config = State.getChartConfig();
-
-      const filterByDateRange = (arr, startISO, endISO) => {
-        const startDate = luxon.DateTime.fromISO(startISO, {
-          zone: 'America/New_York',
-        }).startOf('day');
-        const endDate = luxon.DateTime.fromISO(endISO, {
-          zone: 'America/New_York',
-        }).endOf('day');
-        return arr.filter(entry => {
-          const entryTime = entry.timestamp || entry.time;
-          if (!entryTime) return false;
-          const entryDate = luxon.DateTime.fromISO(entryTime, {
-            zone: 'America/New_York',
-          });
-          return entryDate >= startDate && entryDate <= endDate;
-        });
-      };
-
-      const haveCustom =
-        State.customDateRange.start && State.customDateRange.end;
-      const useTimestamp = !!State.rawData?.[0]?.timestamp;
-
-      if (haveCustom) {
-        if (config.dataPoints === 'hourly') {
-          const filtered = filterByDateRange(
-            Array.isArray(State.rawData) ? State.rawData : [],
-            State.customDateRange.start,
-            State.customDateRange.end
-          );
-          if (filtered.length === 0) {
-            throw new Error('No data available for the selected date range');
-          }
-          State.processedData = DataProcessor.transform(filtered);
-        } else {
-          const baseDaily =
-            Array.isArray(State._dailyCache) && State._dailyCache.length
-              ? State._dailyCache
-              : DataProcessor.processDaily(State.rawData, useTimestamp);
-
-          const filteredDaily = filterByDateRange(
-            baseDaily,
-            State.customDateRange.start,
-            State.customDateRange.end
-          );
-          if (filteredDaily.length === 0) {
-            throw new Error('No data available for the selected date range');
-          }
-          State.processedData = DataProcessor.transform(filteredDaily);
-        }
-      } else if (
-        config.period !== 'all' &&
-        typeof config.period === 'number' &&
-        Array.isArray(State.rawData)
-      ) {
-        const cutoffDate = luxon.DateTime.now()
-          .setZone('America/New_York')
-          .startOf('day')
-          .minus({ days: config.period });
-
-        if (config.dataPoints === 'hourly') {
-          const recent = State.rawData.filter(entry => {
-            const iso = entry.timestamp || entry.time;
-            if (!iso) return false;
-            const dt = luxon.DateTime.fromISO(iso, {
-              zone: 'America/New_York',
-            });
-            return dt >= cutoffDate;
-          });
-          State.processedData = DataProcessor.transform(recent);
-        } else {
-          const baseDaily =
-            Array.isArray(State._dailyCache) && State._dailyCache.length
-              ? State._dailyCache
-              : DataProcessor.processDaily(State.rawData, useTimestamp);
-
-          const recentDaily = baseDaily.filter(entry => {
-            const iso = entry.timestamp || entry.time;
-            const dt = luxon.DateTime.fromISO(iso, {
-              zone: 'America/New_York',
-            });
-            return dt >= cutoffDate;
-          });
-          State.processedData = DataProcessor.transform(recentDaily);
-        }
-      } else {
-        if (config.dataPoints === 'hourly') {
-          State.processedData = DataProcessor.transform(State.rawData);
-        } else {
-          const baseDaily =
-            Array.isArray(State._dailyCache) && State._dailyCache.length
-              ? State._dailyCache
-              : DataProcessor.processDaily(State.rawData, useTimestamp);
-          State.processedData = DataProcessor.transform(baseDaily);
-        }
-      }
-
-      await Charts.create();
-    } catch (error) {
-      console.error('Error loading chart data:', error);
-      if (container) {
-        container.innerHTML = `<div style="text-align:center;padding:20px;color:red;">Error loading chart data: ${error.message}</div>`;
-      }
-    }
-  },
-
-  show() {
-    if (State.isRankingsView || State.isGainsView) {
-      this.hide();
-      return;
-    }
-
-    if (!this.dropdown) {
-      this.create();
-    }
-
-    if (this.dropdown) {
-      this.dropdown.style.display = 'block';
-    }
-
-    this.refresh();
-
-    this.updateGainsToggleVisibility();
-  },
-
-  hide() {
-    if (this.dropdown) {
-      this.dropdown.style.display = 'none';
-    }
-    if (this.gainsToggle) {
-      this.gainsToggle.style.display = 'none';
-    }
-  },
-
-  reset() {
-    State.currentChartMode = Config.defaultChartMode;
-    State.isGainsMode = false;
-    State.isHourlyGainsMode = false;
-    State.isHourlyMode = false;
-    State.hourlyData = null;
-    State.hourlyDateRange = { start: null, end: null };
-    State.customDateRange = { start: null, end: null };
-    State.customDateRangeLabel = null;
-
-    this._lastAvailableModes = null;
-
-    const availableModes = this.getAvailableChartModes();
-    if (!availableModes[State.currentChartMode]) {
-      State.currentChartMode = Config.defaultChartMode;
-    }
-
-    if (this.dropdown) {
-      this.renderSelectedLabel();
-    }
-
-    if (this.gainsToggle) {
-      this.gainsToggle.classList.remove('active');
-      this.gainsToggle.innerHTML = `
-        <i class="fas fa-chart-line"></i>
-        <span>Daily Gains</span>
-      `;
-    }
-
-    CustomDatePicker.reset();
-
-    this.refresh();
-
-    if (this.dropdown) {
-      this.dropdown.style.display = this.hasRenderableChart()
-        ? 'block'
-        : 'none';
-    }
+  clear(view, channelId) {
+    this.positions.delete(this._key(view, channelId));
   },
 };
 
@@ -1018,17 +505,39 @@ const Dom = {
   },
 
   updateUrl(path, channel = null, replace = false) {
-    let newUrl = `${window.location.origin}${window.location.pathname}?data=${path}`;
-    if (channel && channel !== 'mrbeast') {
-      newUrl += `&channel=${channel}`;
+    let newUrl = `${window.location.origin}${window.location.pathname}`;
+    const params = new URLSearchParams();
+
+    if (path === 'rankings' || path === 'gains' || path === 'list') {
+      params.set('channel', channel || 'mrbeast');
+      const tab =
+        path === 'list'
+          ? 'listing'
+          : path === 'rankings'
+          ? 'rankings'
+          : 'gains';
+      params.set('tab', tab);
+    } else if (path === 'videos') {
+      params.set('channel', channel || 'mrbeast');
+      params.set('tab', 'videos');
+    } else if (
+      path &&
+      path.length >= 6 &&
+      !Config.channels.find(c => c.id === path)
+    ) {
+      params.set('data', path);
+      if (channel && channel !== 'mrbeast') params.set('channel', channel);
+    } else {
+      const ch = channel || path || 'mrbeast';
+      params.set('channel', ch);
+      params.set('tab', 'combined');
     }
 
-    const state = { path, channel };
-
+    newUrl += `?${params.toString()}`;
     if (replace) {
-      window.history.replaceState(state, '', newUrl);
+      window.history.replaceState({}, '', newUrl);
     } else {
-      window.history.pushState(state, '', newUrl);
+      window.history.pushState({}, '', newUrl);
     }
   },
 
@@ -1038,6 +547,52 @@ const Dom = {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => callback.apply(this, args), delay);
     };
+  },
+
+  enableHorizontalWheelScroll(
+    el,
+    { requireShift = false, lockPage = false } = {}
+  ) {
+    if (!el) return;
+
+    el.addEventListener(
+      'wheel',
+      e => {
+        if (requireShift && !e.shiftKey) {
+          if (lockPage) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          return;
+        }
+
+        const maxScrollLeft = el.scrollWidth - el.clientWidth;
+
+        if (maxScrollLeft <= 0) {
+          if (lockPage) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          return;
+        }
+
+        const before = el.scrollLeft;
+
+        const dominantDelta =
+          Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+
+        el.scrollLeft = Math.min(
+          maxScrollLeft,
+          Math.max(0, el.scrollLeft + dominantDelta)
+        );
+
+        if (lockPage || el.scrollLeft !== before) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      { passive: false }
+    );
   },
 
   show(id) {
@@ -1056,27 +611,47 @@ const Dom = {
     if (el) el.style.display = 'none';
   },
 
-  setView(type) {
-    if (type === 'rankings') {
+  setMainView(view) {
+    if (view === 'videos') {
+      this.show('channelVideosView');
+      this.hide('videoStatsView');
+      this.hide('rankingsView');
+      this.hide('gainsView');
+      this.hide('listingView');
+    } else if (view === 'rankings') {
+      this.hide('channelVideosView');
+      this.hide('videoStatsView');
       this.show('rankingsView');
       this.hide('gainsView');
       this.hide('listingView');
+    } else if (view === 'gains') {
+      this.hide('channelVideosView');
       this.hide('videoStatsView');
-    } else if (type === 'gains') {
       this.hide('rankingsView');
       this.show('gainsView');
       this.hide('listingView');
+    } else if (view === 'listing') {
+      this.hide('channelVideosView');
       this.hide('videoStatsView');
-    } else if (type === 'listing') {
       this.hide('rankingsView');
       this.hide('gainsView');
       this.show('listingView');
-      this.hide('videoStatsView');
-    } else {
+    } else if (view === 'video') {
+      this.hide('channelVideosView');
+      this.show('videoStatsView');
       this.hide('rankingsView');
       this.hide('gainsView');
       this.hide('listingView');
+    } else {
+      this.hide('channelVideosView');
       this.show('videoStatsView');
+      this.hide('rankingsView');
+      this.hide('gainsView');
+      this.hide('listingView');
+    }
+
+    if (typeof Layout?.setupResponsive === 'function') {
+      Layout.setupResponsive();
     }
   },
 };
@@ -1099,7 +674,6 @@ const Format = {
     }
     return Math.round(value).toLocaleString();
   },
-
   dateTime(luxonDateTime) {
     if (!luxonDateTime || typeof luxonDateTime.toFormat !== 'function') {
       return { dateString: '', timeString: '' };
@@ -1227,13 +801,11 @@ const DataProcessor = {
     ) {
       return [];
     }
-
     const gains = [];
     for (let i = 1; i < timestamps.length; i++) {
       const gain = values[i] - values[i - 1];
       gains.push([timestamps[i], gain]);
     }
-
     return gains;
   },
 
@@ -1257,7 +829,6 @@ const DataProcessor = {
     }));
 
     const dailyData = this.processDaily(rawDataPoints, true);
-
     const gains = [];
 
     for (let i = 1; i < dailyData.length; i++) {
@@ -1341,7 +912,6 @@ const DataProcessor = {
 
   getCurrentSeries() {
     const metric = State.getMetricName();
-
     let points;
 
     if (State.isHourlyGainsMode && metric !== 'uploads') {
@@ -1354,40 +924,34 @@ const DataProcessor = {
       points = this.processDailyGains(timestamps, values);
     } else {
       points = this.seriesPointsForChart(metric);
-    }
-
-    if (Array.isArray(points) && points.length > 0) {
-      const first2025Index = points.findIndex(([ts]) => {
-        const dt = luxon.DateTime.fromMillis(ts, {
-          zone: 'America/New_York',
+      if (Array.isArray(points) && points.length > 0) {
+        const first2025Index = points.findIndex(([ts]) => {
+          const dt = luxon.DateTime.fromMillis(ts, {
+            zone: 'America/New_York',
+          });
+          return dt.year === 2025;
         });
-        return dt.year === 2025;
-      });
-
-      if (first2025Index !== -1) {
-        const first2025Ts = points[first2025Index][0];
-        const isZeroDatapoint =
-          State.videoUploadTime &&
-          first2025Ts ===
-            luxon.DateTime.fromISO(State.videoUploadTime)
-              .setZone('America/New_York')
-              .toMillis() &&
-          points[first2025Index][1] === 0;
-
-        if (!isZeroDatapoint) {
-          points = points.filter(([ts]) => ts !== first2025Ts);
+        if (first2025Index !== -1) {
+          const first2025Ts = points[first2025Index][0];
+          const isZero =
+            State.videoUploadTime &&
+            first2025Ts ===
+              luxon.DateTime.fromISO(State.videoUploadTime)
+                .setZone('America/New_York')
+                .toMillis() &&
+            points[first2025Index][1] === 0;
+          if (!isZero) {
+            points = points.filter(([ts]) => ts !== first2025Ts);
+          }
         }
       }
     }
-
     return points;
   },
 
   processDaily(data, useTimestamp = false) {
     const dailyMap = new Map();
-
     if (!Array.isArray(data)) return [];
-
     for (let i = 0; i < data.length; i++) {
       const entry = data[i];
       const iso = useTimestamp ? entry.timestamp : entry.time;
@@ -1494,15 +1058,14 @@ const ChartBuilder = {
           });
           if (first2025Index !== -1) {
             const first2025Ts = seriesData[first2025Index][0];
-            const isZeroDatapoint =
+            const isZero =
               State.videoUploadTime &&
               first2025Ts ===
                 luxon.DateTime.fromISO(State.videoUploadTime)
                   .setZone('America/New_York')
                   .toMillis() &&
               seriesData[first2025Index][1] === 0;
-
-            if (!isZeroDatapoint) {
+            if (!isZero) {
               seriesData = seriesData.filter(([ts]) => ts !== first2025Ts);
             }
           }
@@ -1536,21 +1099,19 @@ const ChartBuilder = {
     const series = [];
     const now = luxon.DateTime.now().setZone('America/New_York');
     const currentHour = now.hour;
+    this._first2025DateStr = null;
 
     hourlyData.dates.forEach((dateStr, index) => {
       if (!this._first2025DateStr) {
         const dt = luxon.DateTime.fromISO(dateStr, {
           zone: 'America/New_York',
         });
-        if (dt.year === 2025) {
-          this._first2025DateStr = dateStr;
-        }
+        if (dt.year === 2025) this._first2025DateStr = dateStr;
       }
-
       if (dateStr === this._first2025DateStr) return;
+
       const dateData = hourlyData.data[dateStr];
       const values = dateData[metric];
-
       const points = [];
       const date = luxon.DateTime.fromISO(dateStr, {
         zone: 'America/New_York',
@@ -1559,32 +1120,24 @@ const ChartBuilder = {
         date.toFormat('yyyy-MM-dd') === now.toFormat('yyyy-MM-dd');
 
       let skipNext = false;
-
       for (let hour = 0; hour < 24; hour++) {
         const value = values[hour];
-
-        if (isToday && hour > currentHour) {
-          break;
-        }
-
+        if (isToday && hour > currentHour) break;
         if (skipNext) {
           points.push([hour, null]);
           skipNext = false;
           continue;
         }
-
         if (value === null) {
           points.push([hour, null]);
           skipNext = true;
           continue;
         }
-
         points.push([hour, value]);
       }
 
       if (points.length > 0) {
         const label = date.toFormat('EEE, MMM d');
-
         series.push({
           name: label,
           data: points,
@@ -1610,7 +1163,6 @@ const ChartBuilder = {
           if (this.yAxis?.[0]) this.yAxis[0].setExtremes(min, max, true, false);
           State.pendingYAxisRange = null;
         }
-
         if (!State.isHourlyMode && State.persistedRange) {
           try {
             const xa = this.xAxis?.[0];
@@ -1647,7 +1199,6 @@ const ChartBuilder = {
       axis === 'x'
         ? (State.chart?.chartWidth || 800) - 100
         : (State.chart?.chartHeight || 400) - 100;
-
     const maxTicks = Math.floor(axisLength / minPixelsBetweenTicks);
     const roughInterval = dataRange / maxTicks;
 
@@ -1655,7 +1206,6 @@ const ChartBuilder = {
       const hour = 3600000;
       const day = 86400000;
       const week = 604800000;
-
       if (roughInterval < 6 * hour) return 6 * hour;
       if (roughInterval < 12 * hour) return 12 * hour;
       if (roughInterval < day) return day;
@@ -1666,13 +1216,11 @@ const ChartBuilder = {
 
     const magnitude = Math.pow(10, Math.floor(Math.log10(roughInterval)));
     const normalized = roughInterval / magnitude;
-
     let nice;
     if (normalized < 1.5) nice = 1;
     else if (normalized < 3) nice = 2;
     else if (normalized < 7) nice = 5;
     else nice = 10;
-
     return nice * magnitude;
   },
 
@@ -1703,7 +1251,6 @@ const ChartBuilder = {
           formatter: function () {
             const visibleTicks = this.axis.tickPositions || [];
             const pixelsBetween = this.axis.width / visibleTicks.length;
-
             if (State.isMobile() && pixelsBetween < 50) {
               return this.pos % 2 === 0 ? this.value : '';
             }
@@ -1714,7 +1261,6 @@ const ChartBuilder = {
           const positions = [];
           const dataMax = 23;
           const interval = State.isMobile() ? 2 : 1;
-
           for (let i = 0; i <= dataMax; i += interval) {
             positions.push(i);
           }
@@ -1747,9 +1293,7 @@ const ChartBuilder = {
           const dt = luxon.DateTime.fromMillis(this.value, {
             zone: 'America/New_York',
           });
-
           const range = this.axis.max - this.axis.min;
-
           if (State.isMobile()) {
             if (range <= 86400000) return dt.toFormat('HH:mm');
             return dt.toFormat('MM/dd');
@@ -1771,21 +1315,17 @@ const ChartBuilder = {
         const dataMin = this.dataMin;
         const dataMax = this.dataMax;
         const dataRange = dataMax - dataMin;
-
         const optimalInterval = ChartBuilder.calculateOptimalTickInterval(
           'x',
           dataRange,
           State.isMobile() ? 60 : 80
         );
-
         const positions = [];
         let current = Math.ceil(dataMin / optimalInterval) * optimalInterval;
-
         while (current <= dataMax) {
           positions.push(current);
           current += optimalInterval;
         }
-
         return positions;
       },
       gridLineColor: Dom.getCssVar('--border-color'),
@@ -1809,7 +1349,6 @@ const ChartBuilder = {
           ) {
             State.persistedRange = { xMin: e.min, xMax: e.max };
           }
-
           if (!State.isMobile() && State.isChartReady && this.chart?.series) {
             const activeSeries = this.chart.series[State.selectedMetricIndex];
             if (activeSeries?.data?.length > 0) {
@@ -1840,7 +1379,6 @@ const ChartBuilder = {
     const metric =
       State.getMetricName().charAt(0).toUpperCase() +
       State.getMetricName().slice(1);
-
     let metricName = `${metric}`;
     if (isHourly) {
       metricName = `Hourly ${
@@ -1917,7 +1455,6 @@ const ChartBuilder = {
       },
       formatter: function () {
         const isVideoContext = State.currentEntityId !== State.currentChannel;
-
         let dt;
         if (isHourly) {
           const seriesDateISO = this.series?.userOptions?.dateISO;
@@ -1934,9 +1471,7 @@ const ChartBuilder = {
             });
           }
         } else {
-          dt = luxon.DateTime.fromMillis(this.x, {
-            zone: 'America/New_York',
-          });
+          dt = luxon.DateTime.fromMillis(this.x, { zone: 'America/New_York' });
         }
 
         const dateStr = dt.toFormat('MMM d, yyyy');
@@ -1954,7 +1489,6 @@ const ChartBuilder = {
         }
 
         let header = `<b>${dateStr}, ${timeStr}${daySuffix}</b><br/>`;
-
         if (isHourly) {
           const metricName =
             State.getMetricName().charAt(0).toUpperCase() +
@@ -1986,7 +1520,6 @@ const Charts = {
     if (State.isHourlyMode) {
       return State.hourlyData && State.hourlyData.dates?.length > 0;
     }
-
     if (!State.processedData.timestamps?.length) return false;
     const currentSeries = DataProcessor.getCurrentSeries();
     return currentSeries && currentSeries.length > 0;
@@ -1996,7 +1529,7 @@ const Charts = {
     if (State.chart) {
       try {
         State.chart.destroy();
-      } catch (e) {}
+      } catch {}
       State.chart = null;
     }
   },
@@ -2027,11 +1560,8 @@ const Charts = {
 
     const chartContainer = document.querySelector('.chart-container');
     if (chartContainer) {
-      if (isHourly) {
-        chartContainer.classList.add('hourly-mode');
-      } else {
-        chartContainer.classList.remove('hourly-mode');
-      }
+      if (isHourly) chartContainer.classList.add('hourly-mode');
+      else chartContainer.classList.remove('hourly-mode');
     }
 
     let seriesConfig, yRange;
@@ -2052,14 +1582,9 @@ const Charts = {
         const maxVal = Math.max(...allValues);
         const range = maxVal - minVal;
         const padding = Math.max(range * 0.05, 1);
-
         let calcMin = minVal - padding;
         const calcMax = maxVal + padding;
-
-        if (calcMin < 0 && minVal >= 0) {
-          calcMin = 0;
-        }
-
+        if (calcMin < 0 && minVal >= 0) calcMin = 0;
         yRange = { min: calcMin, max: calcMax };
       }
     } else {
@@ -2084,30 +1609,29 @@ const Charts = {
         State.getMetricName().charAt(0).toUpperCase() +
         State.getMetricName().slice(1);
       const baseTitle = `Hourly ${metricName} Gains`;
-      const modeLabel = State.customDateRangeLabel
-        ? State.customDateRangeLabel
-        : Config.chartModes[State.currentChartMode].label;
+      const modeLabel =
+        State.customDateRangeLabel ||
+        Config.chartModes[State.currentChartMode].label;
       chartTitle = `${baseTitle} - ${modeLabel}`;
     } else if (State.isGainsMode) {
       const metricName =
         State.getMetricName().charAt(0).toUpperCase() +
         State.getMetricName().slice(1);
       const baseTitle = `Daily ${metricName} Gains`;
-      const modeLabel = State.customDateRangeLabel
-        ? State.customDateRangeLabel
-        : Config.chartModes[State.currentChartMode].label;
+      const modeLabel =
+        State.customDateRangeLabel ||
+        Config.chartModes[State.currentChartMode].label;
       chartTitle = `${baseTitle} - ${modeLabel}`;
     } else {
       const metricName =
         seriesConfig[State.selectedMetricIndex]?.name || 'Chart';
-      const modeLabel = State.customDateRangeLabel
-        ? State.customDateRangeLabel
-        : Config.chartModes[State.currentChartMode].label;
+      const modeLabel =
+        State.customDateRangeLabel ||
+        Config.chartModes[State.currentChartMode].label;
       chartTitle = `${metricName} - ${modeLabel}`;
     }
 
     const shouldAnimate = animate && !State.isMobile();
-
     const visibleSeries = seriesConfig.filter(s => s.visible);
     const maxPointsVisible = Math.max(
       0,
@@ -2174,21 +1698,14 @@ const Charts = {
           fontWeight: '500',
           fontSize: State.isMobile() ? '11px' : '13px',
         },
-        itemHoverStyle: {
-          color: Dom.getCssVar('--hover-text-color'),
-        },
+        itemHoverStyle: { color: Dom.getCssVar('--hover-text-color') },
         align: 'center',
         verticalAlign: 'bottom',
         layout: 'horizontal',
         y: 15,
         floating: false,
         maxHeight: 60,
-        navigation: {
-          enabled: true,
-          style: {
-            color: textColor,
-          },
-        },
+        navigation: { enabled: true, style: { color: textColor } },
         events: {
           itemClick: function (event) {
             const chart = this.chart;
@@ -2197,24 +1714,18 @@ const Charts = {
               chart.series.forEach(series => {
                 if (series.visible || series === event.target) {
                   series.data.forEach(point => {
-                    if (point && point.y != null) {
-                      allValues.push(point.y);
-                    }
+                    if (point && point.y != null) allValues.push(point.y);
                   });
                 }
               });
-
               if (allValues.length > 0) {
                 const minVal = Math.min(...allValues);
                 const maxVal = Math.max(...allValues);
                 const range = maxVal - minVal;
                 const padding = Math.max(range * 0.05, 1);
-
                 let calcMin = minVal - padding;
                 const calcMax = maxVal + padding;
-
                 if (calcMin < 0 && minVal >= 0) calcMin = 0;
-
                 chart.yAxis[0].setExtremes(calcMin, calcMax, true, true);
               }
             }, 10);
@@ -2261,9 +1772,7 @@ const Charts = {
           lineWidth: State.isMobile() ? 2.5 : 3.5,
           threshold: null,
         },
-        line: {
-          lineWidth: State.isMobile() ? 2 : 2.5,
-        },
+        line: { lineWidth: State.isMobile() ? 2 : 2.5 },
       },
       responsive: {
         rules: [
@@ -2324,14 +1833,12 @@ const Charts = {
 const Stats = {
   update() {
     if (!State.processedData.series) return;
-
     const { views, likes, comments, uploads } = State.processedData.series;
     const stats = [
       { id: 'totalViews', value: views[views.length - 1] || 0 },
       { id: 'totalLikes', value: likes[likes.length - 1] || 0 },
       { id: 'totalComments', value: comments[comments.length - 1] || 0 },
     ];
-
     if (uploads?.length > 0) {
       stats.push({
         id: 'totalUploads',
@@ -2341,7 +1848,6 @@ const Stats = {
     } else {
       Dom.hide('uploadCountCard');
     }
-
     stats.forEach(stat => {
       const el = Dom.get(stat.id);
       if (el) {
@@ -2359,11 +1865,8 @@ const Stats = {
 
     const grid = document.querySelector('.stats-grid');
     if (grid) {
-      if (uploads?.length > 0) {
-        grid.classList.remove('three-columns');
-      } else {
-        grid.classList.add('three-columns');
-      }
+      if (uploads?.length > 0) grid.classList.remove('three-columns');
+      else grid.classList.add('three-columns');
     }
   },
 };
@@ -2389,7 +1892,6 @@ const Tables = {
         previous && index > 1
           ? (previous[metric] || 0) - (dailyData[index - 2]?.[metric] || 0)
           : 0;
-
       result[metric] = {
         change: previous ? calcChange(current[metric], previous[metric]) : '',
         class: previous ? determineClass(currentChange, previousChange) : '',
@@ -2404,11 +1906,7 @@ const Tables = {
     const currentTime = luxon.DateTime.fromISO(
       useTimestamp ? currentData.timestamp : currentData.time
     ).setZone('America/New_York');
-    const rounded = currentTime.set({
-      minute: 0,
-      second: 0,
-      millisecond: 0,
-    });
+    const rounded = currentTime.set({ minute: 0, second: 0, millisecond: 0 });
     const currentDate = luxon.DateTime.now().setZone('America/New_York');
     const displayTime = currentDate.set({
       hour: rounded.hour,
@@ -2428,24 +1926,22 @@ const Tables = {
     );
 
     row.innerHTML = `
-      <td>${dateString}, ${timeString}</td>
-      <td>${Math.round(
-        currentData.views
-      ).toLocaleString()} <span class="change ${changes.views.class}">(${
+      <td data-label="Date (EST)">${dateString}, ${timeString}</td>
+      <td data-label="Views">${Math.round(currentData.views).toLocaleString()}
+        <span class="change ${changes.views.class}">(${
       changes.views.change
     })</span></td>
-      <td>${Math.round(
-        currentData.likes
-      ).toLocaleString()} <span class="change ${changes.likes.class}">(${
+      <td data-label="Likes">${Math.round(currentData.likes).toLocaleString()}
+        <span class="change ${changes.likes.class}">(${
       changes.likes.change
     })</span></td>
-      <td>${Math.round(
+      <td data-label="Comments">${Math.round(
         currentData.comments
-      ).toLocaleString()} <span class="change ${changes.comments.class}">(${
+      ).toLocaleString()}
+        <span class="change ${changes.comments.class}">(${
       changes.comments.change
     })</span></td>
     `;
-
     tableBody.insertBefore(row, tableBody.firstChild);
   },
 
@@ -2456,11 +1952,9 @@ const Tables = {
     chunkSize = 250
   ) {
     let i = dailyData.length - 1;
-
     const renderChunk = () => {
       const frag = document.createDocumentFragment();
       let count = 0;
-
       while (i >= 0 && count < chunkSize) {
         const entry = dailyData[i];
         const row = document.createElement('tr');
@@ -2471,25 +1965,28 @@ const Tables = {
         const changes = this.calcChanges(entry, dailyData[i - 1], dailyData, i);
 
         row.innerHTML = `
-          <td>${dateString}</td>
-          <td>${Math.round(entry.views).toLocaleString()} <span class="change ${
-          changes.views.class
-        }">(${changes.views.change})</span></td>
-          <td>${Math.round(entry.likes).toLocaleString()} <span class="change ${
-          changes.likes.class
-        }">(${changes.likes.change})</span></td>
-          <td>${Math.round(
+         <td data-label="Date (EST)">${dateString}</td>
+         <td data-label="Views">${Math.round(
+           entry.views
+         ).toLocaleString()}            
+            <span class="change ${changes.views.class}">(${
+          changes.views.change
+        })</span></td>
+          <td data-label="Likes">${Math.round(entry.likes).toLocaleString()}
+            <span class="change ${changes.likes.class}">(${
+          changes.likes.change
+        })</span></td>
+          <td data-label="Comments">${Math.round(
             entry.comments
-          ).toLocaleString()} <span class="change ${changes.comments.class}">(${
+          ).toLocaleString()}
+            <span class="change ${changes.comments.class}">(${
           changes.comments.change
         })</span></td>
         `;
-
         frag.appendChild(row);
         i--;
         count++;
       }
-
       tableBody.appendChild(frag);
 
       if (i >= 0) {
@@ -2500,7 +1997,6 @@ const Tables = {
         }
       }
     };
-
     if (typeof requestIdleCallback !== 'undefined') {
       requestIdleCallback(renderChunk);
     } else {
@@ -2547,7 +2043,6 @@ const Rankings = {
   async fetch(channelId, filter = 'long') {
     const cacheKey = `${channelId}-${filter}`;
     const url = `${Config.api.rankings}?channel=${channelId}&filter=${filter}`;
-
     try {
       const data = await Net.fetchJson(url, {}, 10 * 60 * 1000);
       if (!data.videos || !Array.isArray(data.videos)) {
@@ -2576,26 +2071,21 @@ const Rankings = {
     let filteredVideos = videos;
     if (currentFilter !== 'all') {
       const isShort = currentFilter === 'short';
-      filteredVideos = videos.filter(v => {
-        return isShort ? v.isShort === true : v.isShort === false;
-      });
+      filteredVideos = videos.filter(v =>
+        isShort ? v.isShort === true : v.isShort === false
+      );
     }
-
-    if (filteredVideos.length === 0) {
-      filteredVideos = videos;
-    }
+    if (filteredVideos.length === 0) filteredVideos = videos;
 
     const newest = filteredVideos.sort(
       (a, b) => new Date(b.uploadTime) - new Date(a.uploadTime)
     )[0];
     const ageInHours = this.calcAge(newest.uploadTime);
-
     const hasData =
       newest.periodData && newest.periodData[`views_${ageInHours}`] > 0;
 
     let smartTimePeriod,
       highlightNewest = false;
-
     if (ageInHours > 0 && ageInHours < 168 && hasData) {
       smartTimePeriod = ageInHours;
       highlightNewest = true;
@@ -2613,7 +2103,6 @@ const Rankings = {
 
   processVideos(videos, timePeriod, videoCount, metric = 'views') {
     if (!videos || !Array.isArray(videos)) return [];
-
     const metricKey = `${metric}_${timePeriod}`;
 
     const withData = videos
@@ -2621,10 +2110,7 @@ const Rankings = {
         const data = v.periodData && v.periodData[metricKey];
         return data && data > 0;
       })
-      .map(v => ({
-        ...v,
-        metricAtPeriod: v.periodData[metricKey],
-      }));
+      .map(v => ({ ...v, metricAtPeriod: v.periodData[metricKey] }));
 
     const recent = withData
       .sort((a, b) => new Date(b.uploadTime) - new Date(a.uploadTime))
@@ -2636,7 +2122,6 @@ const Rankings = {
   display(videos) {
     const list = Dom.get('rankingsList');
     if (!list) return;
-
     list.innerHTML = '';
 
     if (!videos || !Array.isArray(videos) || videos.length === 0) {
@@ -2665,23 +2150,23 @@ const Rankings = {
     );
 
     const fragment = document.createDocumentFragment();
-
     ranked.forEach((video, index) => {
       const item = Dom.create('div', 'ranking-item');
       item.dataset.videoId = video.videoId;
 
-      const shouldHighlight = video.videoId === newest.videoId;
-      if (shouldHighlight) item.classList.add('ranking-highlight');
+      if (video.videoId === newest.videoId)
+        item.classList.add('ranking-highlight');
 
       const formattedMetric = video.metricAtPeriod.toLocaleString();
       const periodUnit =
         State.rankingsSettings.timePeriod === 1 ? 'hour' : 'hours';
+
       item.innerHTML = `
         <div class="ranking-position">${index + 1}</div>
         <img class="ranking-thumbnail" src="${video.thumbnail}" alt="${
         video.title
-      }" 
-             onerror="this.style.display='none'" loading="lazy">
+      }"
+          onerror="this.style.display='none'" loading="lazy">
         <div class="ranking-info">
           <div class="ranking-title">${video.title}</div>
         </div>
@@ -2701,7 +2186,6 @@ const Rankings = {
 
       fragment.appendChild(item);
     });
-
     list.appendChild(fragment);
 
     const heading = document.querySelector('.rankings-header h2');
@@ -2711,19 +2195,14 @@ const Rankings = {
 
     const subtitle = document.querySelector('.rankings-subtitle');
     const formatTimePeriod = hours => {
-      if (hours < 24) {
-        return `${hours} ${hours === 1 ? 'Hour' : 'Hours'}`;
-      }
+      if (hours < 24) return `${hours} ${hours === 1 ? 'Hour' : 'Hours'}`;
       const days = Math.floor(hours / 24);
       const remainingHours = hours % 24;
-      if (remainingHours === 0) {
-        return `${days} ${days === 1 ? 'Day' : 'Days'}`;
-      }
+      if (remainingHours === 0) return `${days} ${days === 1 ? 'Day' : 'Days'}`;
       return `${days} ${days === 1 ? 'Day' : 'Days'}, ${remainingHours} ${
         remainingHours === 1 ? 'Hour' : 'Hours'
       }`;
     };
-
     if (subtitle) {
       const metricName =
         State.rankingsSettings.metric.charAt(0).toUpperCase() +
@@ -2736,13 +2215,9 @@ const Rankings = {
 
   updateInstant() {
     if (!State.isRankingsView || !State.currentChannel) return;
-
     const cacheKey = `${State.currentChannel}-${State.rankingsSettings.filter}`;
     const cached = State.cachedRankings.get(cacheKey);
-
-    if (cached) {
-      this.display(cached);
-    }
+    if (cached) this.display(cached);
   },
 
   async updateWithFetch() {
@@ -2792,9 +2267,7 @@ const Rankings = {
           State.rankingsSettings.videoCount = parseInt(e.target.value);
           if (countValue)
             countValue.textContent = State.rankingsSettings.videoCount;
-
           State.saveSettings();
-
           clearTimeout(this.updateTimeouts.get('videoCount'));
           this.updateTimeouts.set(
             'videoCount',
@@ -2813,9 +2286,7 @@ const Rankings = {
           State.rankingsSettings.timePeriod = parseInt(e.target.value);
           if (periodValue)
             periodValue.textContent = State.rankingsSettings.timePeriod;
-
           State.saveSettings();
-
           clearTimeout(this.updateTimeouts.get('timePeriod'));
           this.updateTimeouts.set(
             'timePeriod',
@@ -2840,7 +2311,6 @@ const Rankings = {
 
         State.rankingsSettings.filter = filter;
         State.saveSettings();
-
         this.updateSmartHours();
         this.updateWithFetch();
       });
@@ -2858,7 +2328,6 @@ const Rankings = {
 
         State.rankingsSettings.metric = metric;
         State.saveSettings();
-
         this.updateInstant();
       });
     });
@@ -2866,13 +2335,11 @@ const Rankings = {
 
   async updateSmartHours() {
     if (!State.currentChannel) return;
-
     try {
       const videos = await this.fetch(
         State.currentChannel,
         State.rankingsSettings.filter
       );
-
       if (videos.length > 0) {
         const defaults = this.getDefaults(
           videos,
@@ -2929,7 +2396,7 @@ Rankings.prefetch = async function (channelId) {
   const filters = ['all', 'long', 'short'];
   try {
     await Promise.allSettled(filters.map(f => Rankings.fetch(channelId, f)));
-  } catch (e) {}
+  } catch {}
 };
 
 const Gains = {
@@ -3099,7 +2566,6 @@ const Gains = {
     }
 
     const fragment = document.createDocumentFragment();
-
     sorted.forEach((video, index) => {
       const item = Dom.create('div', 'gains-item');
       item.dataset.videoId = video.videoId;
@@ -3143,8 +2609,8 @@ const Gains = {
         <div class="gains-position">${index + 1}</div>
         <img class="gains-thumbnail" src="${video.thumbnail}" alt="${
         video.title
-      }" 
-             onerror="this.style.display='none'" loading="lazy">
+      }"
+          onerror="this.style.display='none'" loading="lazy">
         <div class="gains-info">
           <div class="gains-title">${video.title}</div>
         </div>
@@ -3202,7 +2668,6 @@ const Gains = {
     if (!State.isGainsView || !State.currentChannel) return;
 
     const list = Dom.get('gainsList');
-
     const cacheKey = `${State.currentChannel}-${State.gainsSettings.metric}-${State.gainsSettings.filter}-${State.gainsSettings.period}-${State.gainsSettings.sortMode}`;
     const cached = this.allVideosCache.get(cacheKey);
 
@@ -3279,15 +2744,12 @@ const Gains = {
 
     if (countSlider) {
       countSlider.value = State.gainsSettings.count;
-
       countSlider.addEventListener(
         'input',
         e => {
           State.gainsSettings.count = parseInt(e.target.value);
           if (countValue) countValue.textContent = State.gainsSettings.count;
-
           State.saveSettings();
-
           clearTimeout(this.updateTimeout);
           this.updateTimeout = setTimeout(() => this.updateInstant(false), 50);
         },
@@ -3349,1452 +2811,7 @@ const Gains = {
 Gains.prefetch = async function (channelId) {
   try {
     await Gains.fetchBatch(channelId);
-  } catch (e) {}
-};
-
-const CustomDatePicker = {
-  datePickerButton: null,
-  modal: null,
-  startDateInput: null,
-  endDateInput: null,
-  currentMode: null,
-
-  createDatePickerButton() {
-    if (this.datePickerButton) {
-      return this.datePickerButton;
-    }
-
-    const chartContainer = document.querySelector('.chart-container');
-    if (!chartContainer) {
-      return null;
-    }
-
-    this.datePickerButton = Dom.create('button', 'custom-date-picker-button');
-    this.datePickerButton.innerHTML = '<i class="fas fa-calendar-alt"></i>';
-    this.datePickerButton.title = 'Select custom date range';
-
-    this.datePickerButton.addEventListener('click', () => {
-      this.openModal();
-    });
-
-    const title = chartContainer.querySelector('#videoChart');
-    if (title && title.parentElement) {
-      title.parentElement.insertBefore(this.datePickerButton, title);
-    } else {
-    }
-
-    return this.datePickerButton;
-  },
-
-  createModal() {
-    if (this.modal) return this.modal;
-
-    this.modal = Dom.create('div', 'date-picker-modal');
-    this.modal.innerHTML = `
-      <div class="date-picker-content">
-        <div class="date-picker-header">
-          <h3 id="modalTitle">Select Date Range</h3>
-        </div>
-        <div class="date-picker-body">
-          <div class="date-input-group">
-            <label for="modalStartDate">Start Date</label>
-            <input type="date" id="modalStartDate" />
-          </div>
-          <div class="date-input-group">
-            <label for="modalEndDate">End Date</label>
-            <input type="date" id="modalEndDate" />
-          </div>
-        </div>
-        <div class="date-picker-actions">
-          <button class="date-picker-button secondary" id="cancelDatePicker">
-            Cancel
-          </button>
-          <button class="date-picker-button primary" id="applyDatePicker">
-            Apply
-          </button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(this.modal);
-
-    this.startDateInput = document.getElementById('modalStartDate');
-    this.endDateInput = document.getElementById('modalEndDate');
-
-    this.modal.addEventListener('click', e => {
-      if (e.target === this.modal) {
-        this.closeModal();
-      }
-    });
-
-    const cancelBtn = document.getElementById('cancelDatePicker');
-    cancelBtn.addEventListener('click', () => this.closeModal());
-
-    const applyBtn = document.getElementById('applyDatePicker');
-    applyBtn.addEventListener('click', () => this.applyDateRange());
-
-    return this.modal;
-  },
-
-  openModal(mode = null) {
-    if (!mode) {
-      const config = State.getChartConfig();
-      mode = config.dataPoints === 'hourly-chart' ? 'hourly' : 'regular';
-    }
-
-    this.currentMode = mode;
-
-    if (!this.modal) {
-      this.createModal();
-    }
-
-    if (this.startDateInput && this.endDateInput) {
-      const now = luxon.DateTime.now().setZone('America/New_York');
-      let start;
-
-      if (mode === 'hourly') {
-        if (State.currentChartMode === '7dh' && !State.hourlyDateRange.start) {
-          start = now.minus({ days: 7 }).startOf('day');
-        } else if (State.hourlyDateRange.start) {
-          start = luxon.DateTime.fromISO(State.hourlyDateRange.start, {
-            zone: 'America/New_York',
-          });
-        } else {
-          start = now.minus({ days: Config.hourly.defaultDays }).startOf('day');
-        }
-
-        this.startDateInput.value =
-          State.hourlyDateRange.start || start.toISODate();
-        this.endDateInput.value = State.hourlyDateRange.end || now.toISODate();
-      } else {
-        if (State.customDateRange.start) {
-          start = luxon.DateTime.fromISO(State.customDateRange.start, {
-            zone: 'America/New_York',
-          });
-        } else {
-          start = now.minus({ days: 30 }).startOf('day');
-        }
-
-        this.startDateInput.value =
-          State.customDateRange.start || start.toISODate();
-        this.endDateInput.value = State.customDateRange.end || now.toISODate();
-      }
-
-      this.endDateInput.max = now.toISODate();
-
-      const title = this.modal.querySelector('#modalTitle');
-      if (title) {
-        if (mode === 'hourly') {
-          title.textContent = 'Select Hourly Chart Date Range';
-        } else {
-          title.textContent = 'Select Custom Date Range';
-        }
-      }
-    }
-
-    this.modal.classList.add('show');
-  },
-
-  closeModal() {
-    if (this.modal) {
-      this.modal.classList.remove('show');
-    }
-  },
-
-  async applyDateRange() {
-    if (!this.startDateInput || !this.endDateInput) return;
-
-    const startDate = this.startDateInput.value;
-    const endDate = this.endDateInput.value;
-
-    if (!startDate || !endDate) {
-      alert('Please select both start and end dates');
-      return;
-    }
-
-    if (startDate > endDate) {
-      alert('Start date must be before end date');
-      return;
-    }
-
-    this.closeModal();
-
-    try {
-      const container = Dom.get('videoChart');
-      if (container) {
-        container.innerHTML =
-          '<div style="text-align:center;padding:20px;">Loading custom date range...</div>';
-      }
-
-      if (this.currentMode === 'hourly') {
-        State.hourlyDateRange.start = startDate;
-        State.hourlyDateRange.end = endDate;
-
-        const data = await ChartModeDropdown.fetchHourlyData(
-          State.currentEntityId,
-          State.currentChannel,
-          startDate,
-          endDate
-        );
-
-        State.hourlyData = data;
-        State.isHourlyMode = true;
-
-        const start = luxon.DateTime.fromISO(startDate, {
-          zone: 'America/New_York',
-        });
-        const end = luxon.DateTime.fromISO(endDate, {
-          zone: 'America/New_York',
-        });
-        State.customDateRangeLabel = `${start.toFormat(
-          'MM/dd'
-        )} - ${end.toFormat('MM/dd')}`;
-      } else {
-        State.customDateRange.start = startDate;
-        State.customDateRange.end = endDate;
-
-        const start = luxon.DateTime.fromISO(startDate, {
-          zone: 'America/New_York',
-        });
-        const end = luxon.DateTime.fromISO(endDate, {
-          zone: 'America/New_York',
-        });
-        State.customDateRangeLabel = `${start.toFormat(
-          'MM/dd'
-        )} - ${end.toFormat('MM/dd')}`;
-
-        await this.loadCustomRangeData();
-      }
-
-      await Charts.create();
-    } catch (error) {
-      console.error('Failed to load custom date range:', error);
-      const container = Dom.get('videoChart');
-      if (container) {
-        container.innerHTML =
-          '<div style="text-align:center;padding:20px;color:red;">Error loading custom date range. Please try again.</div>';
-      }
-
-      if (this.currentMode === 'hourly') {
-        State.isHourlyMode = false;
-        State.hourlyData = null;
-        State.hourlyDateRange = { start: null, end: null };
-      } else {
-        State.customDateRange = { start: null, end: null };
-      }
-
-      State.customDateRangeLabel = null;
-    }
-  },
-
-  async loadCustomRangeData() {
-    const startDate = luxon.DateTime.fromISO(State.customDateRange.start, {
-      zone: 'America/New_York',
-    }).startOf('day');
-
-    const endDate = luxon.DateTime.fromISO(State.customDateRange.end, {
-      zone: 'America/New_York',
-    }).endOf('day');
-
-    let filteredData = State.rawData;
-
-    if (Array.isArray(filteredData)) {
-      filteredData = filteredData.filter(entry => {
-        const entryTime = entry.timestamp || entry.time;
-        if (!entryTime) return false;
-
-        const entryDate = luxon.DateTime.fromISO(entryTime, {
-          zone: 'America/New_York',
-        });
-        const isInRange = entryDate >= startDate && entryDate <= endDate;
-
-        return isInRange;
-      });
-
-      if (filteredData.length === 0) {
-        throw new Error('No data available for the selected date range');
-      }
-
-      const daysDiff = Math.ceil(endDate.diff(startDate, 'days').days);
-
-      if (daysDiff <= 60) {
-        State.processedData = DataProcessor.transform(filteredData);
-      } else {
-        const dailyData = DataProcessor.processDaily(
-          filteredData,
-          !!filteredData[0]?.timestamp
-        );
-        State.processedData = DataProcessor.transform(dailyData);
-      }
-    } else {
-      throw new Error('Invalid data format');
-    }
-  },
-
-  show() {
-    if (!this.datePickerButton) {
-      this.createDatePickerButton();
-    }
-  },
-
-  hide() {
-    if (this.datePickerButton) {
-      this.datePickerButton.classList.remove('show');
-    }
-  },
-
-  reset() {
-    State.hourlyDateRange = { start: null, end: null };
-    State.customDateRange = { start: null, end: null };
-    State.customDateRangeLabel = null;
-    if (this.datePickerButton) {
-      this.datePickerButton.classList.remove('show');
-    }
-  },
-};
-
-const Theme = {
-  updateIcons(theme) {
-    const iconColor = theme === 'light' ? '000000' : 'ffffff';
-    const themeIcon = Dom.get('themeIcon');
-    const exportIcon = Dom.get('exportIcon');
-
-    if (themeIcon)
-      themeIcon.src = `https://img.icons8.com/material-outlined/24/${iconColor}/contrast.png`;
-    if (exportIcon)
-      exportIcon.src = `https://img.icons8.com/material-outlined/24/${iconColor}/download.png`;
-  },
-
-  bindToggle() {
-    const toggle = Dom.get('themeToggle');
-    if (toggle) {
-      toggle.addEventListener('click', () => {
-        const current = document.body.getAttribute('data-theme');
-        const newTheme = current === 'light' ? 'dark' : 'light';
-
-        document.documentElement.classList.add('no-transitions');
-
-        document.documentElement.setAttribute('data-theme', newTheme);
-        document.body.setAttribute('data-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
-        this.updateIcons(newTheme);
-
-        if (State.chart) {
-          setTimeout(() => {
-            const newCardBg = Dom.getCssVar('--card-background-color');
-            const newBorderColor = Dom.getCssVar('--border-color');
-            const newTextColor = Dom.getCssVar('--text-color');
-
-            State.chart.update(
-              {
-                chart: {
-                  backgroundColor: newCardBg,
-                  plotBackgroundColor: newCardBg,
-                  plotBorderColor: newBorderColor,
-                  animation: false,
-                },
-                title: {
-                  style: { color: newTextColor },
-                },
-                xAxis: {
-                  title: { style: { color: newTextColor } },
-                  labels: { style: { color: newTextColor } },
-                  gridLineColor: newBorderColor,
-                  lineColor: newBorderColor,
-                  tickColor: newBorderColor,
-                  minorGridLineColor: newBorderColor,
-                },
-                yAxis: {
-                  title: { style: { color: newTextColor } },
-                  labels: { style: { color: newTextColor } },
-                  gridLineColor: newBorderColor,
-                  lineColor: newBorderColor,
-                  tickColor: newBorderColor,
-                  minorGridLineColor: newBorderColor,
-                },
-                legend: {
-                  itemStyle: { color: newTextColor },
-                },
-              },
-              true
-            );
-          }, 10);
-        }
-
-        setTimeout(() => {
-          document.documentElement.classList.remove('no-transitions');
-        }, 100);
-      });
-    }
-  },
-
-  init() {
-    const stored = localStorage.getItem('theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', stored);
-    document.body.setAttribute('data-theme', stored);
-    this.updateIcons(stored);
-    this.bindToggle();
-  },
-};
-
-const Search = {
-  videoChannelMap: new Map(),
-  allVideosByChannel: {},
-  currentDropdownChannel: 'mrbeast',
-
-  _initialUrlHandled: false,
-
-  handleInput: Dom.debounce(function (e) {
-    const dropdown = Dom.get('dropdownList');
-    if (!dropdown) return;
-
-    const term = e.target.value.trim().toLowerCase();
-    const isSearching = term.length > 0;
-
-    dropdown.querySelectorAll('.dropdown-list-item.bold').forEach(item => {
-      item.style.display = isSearching ? 'none' : '';
-    });
-
-    dropdown
-      .querySelectorAll('.dropdown-list-item:not(.bold)')
-      .forEach(item => {
-        const text = item.textContent.toLowerCase();
-        item.style.display = text.includes(term) ? '' : 'none';
-      });
-  }, 150),
-
-  handleClickOut(e) {
-    if (!e.target.closest('.search-bar')) {
-      const dropdown = Dom.get('dropdownList');
-      if (dropdown) dropdown.classList.remove('show');
-    }
-  },
-
-  bindMetricCards() {
-    const createFaded = hex => {
-      const h = hex.replace('#', '');
-      const r = parseInt(h.substr(0, 2), 16);
-      const g = parseInt(h.substr(2, 2), 16);
-      const b = parseInt(h.substr(4, 2), 16);
-
-      const fadedR = Math.round(r + (255 - r) * 0.2);
-      const fadedG = Math.round(g + (255 - g) * 0.2);
-      const fadedB = Math.round(b + (255 - b) * 0.2);
-
-      return `rgb(${fadedR}, ${fadedG}, ${fadedB})`;
-    };
-
-    const colors = {
-      0: createFaded(Config.colors.views),
-      1: createFaded(Config.colors.likes),
-      2: createFaded(Config.colors.comments),
-      3: createFaded(Config.colors.uploads),
-    };
-
-    document.querySelectorAll('.stat-card').forEach((card, index) => {
-      card.addEventListener('click', async () => {
-        document.querySelectorAll('.stat-card').forEach(c => {
-          c.classList.remove('active');
-          c.style.removeProperty('--active-card-color');
-        });
-
-        card.classList.add('active');
-        card.style.setProperty('--active-card-color', colors[index]);
-        State.selectedMetricIndex = index;
-
-        ChartModeDropdown.show();
-        const didChangeMode = await ChartModeDropdown.refresh();
-
-        if (!didChangeMode) {
-          Charts.create({ animate: true });
-        }
-      });
-    });
-
-    const initial =
-      document.querySelectorAll('.stat-card')[State.selectedMetricIndex];
-    if (initial) {
-      initial.classList.add('active');
-      initial.style.setProperty(
-        '--active-card-color',
-        colors[State.selectedMetricIndex]
-      );
-    }
-  },
-
-  bindHistoryNav() {
-    window.addEventListener('popstate', event => {
-      const params = new URLSearchParams(window.location.search);
-      const videoId = params.get('data');
-      const channelParam = params.get('channel');
-
-      const channelMap = Config.channels.reduce((acc, ch) => {
-        acc[ch.id] = ch;
-        return acc;
-      }, {});
-
-      if (videoId === 'rankings') {
-        const channel =
-          channelParam && channelMap[channelParam]
-            ? channelMap[channelParam]
-            : Config.channels[0];
-        const input = Dom.get('searchInput');
-        if (input) input.value = 'Top Video Rankings';
-        Loader.loadChannel(
-          channel.id,
-          channel.avatar,
-          channel.id,
-          true,
-          false,
-          true
-        );
-      } else if (videoId === 'gains') {
-        const channel =
-          channelParam && channelMap[channelParam]
-            ? channelMap[channelParam]
-            : Config.channels[0];
-        const input = Dom.get('searchInput');
-        if (input) input.value = 'Top Video Gains';
-        Loader.loadChannel(
-          channel.id,
-          channel.avatar,
-          channel.id,
-          false,
-          true,
-          true
-        );
-      } else if (videoId === 'list') {
-        const channel =
-          channelParam && channelMap[channelParam]
-            ? channelMap[channelParam]
-            : Config.channels[0];
-        const input = Dom.get('searchInput');
-        if (input) input.value = 'Channel Video List';
-        Loader.loadChannelListing(channel.id, channel.avatar, true);
-      } else if (channelMap[videoId]) {
-        const channel = channelMap[videoId];
-        const input = Dom.get('searchInput');
-        if (input) input.value = channel.name;
-        Loader.loadChannel(
-          channel.id,
-          channel.avatar,
-          channel.id,
-          false,
-          false,
-          true
-        );
-      } else if (videoId) {
-        const actualChannel =
-          channelParam || this.getChannelForVideo(videoId) || 'mrbeast';
-        Loader.loadVideo(videoId, actualChannel, true);
-      } else {
-        this.loadDefaultVideo();
-      }
-    });
-  },
-
-  bindEvents() {
-    const searchInput = Dom.get('searchInput');
-    const dropdown = Dom.get('dropdownList');
-
-    if (searchInput && dropdown) {
-      searchInput.addEventListener('focus', () =>
-        dropdown.classList.add('show')
-      );
-      searchInput.addEventListener('input', this.handleInput);
-    }
-
-    document.addEventListener('click', this.handleClickOut);
-    this.bindMetricCards();
-  },
-
-  createChannelOption(channel) {
-    const option = Dom.create('div', 'dropdown-list-item bold');
-    option.innerHTML = `
-      <div style="display: flex; align-items: center;">
-        <img src="${channel.avatar}" alt="${channel.name}" 
-             style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;" 
-             onerror="this.style.display='none'" loading="lazy">
-        ${channel.name}
-      </div>
-    `;
-    return option;
-  },
-
-  createChannelOpts() {
-    const dropdown = Dom.get('dropdownList');
-    if (!dropdown) return;
-
-    const rankingsOpt = Dom.create('div', 'dropdown-list-item bold');
-    rankingsOpt.innerHTML = `
-      <div style="display: flex; align-items: center;">
-        <i class="fas fa-trophy" style="margin-right: 10px; color: var(--primary-color); font-size: 1.2rem;"></i>
-        Top Video Rankings
-      </div>
-    `;
-    dropdown.appendChild(rankingsOpt);
-
-    rankingsOpt.addEventListener('click', () => {
-      const input = Dom.get('searchInput');
-      if (input) input.value = 'Top Video Rankings';
-      dropdown.classList.remove('show');
-
-      const currentChannel = State.currentChannel || 'mrbeast';
-      const channelConfig =
-        Config.channels.find(ch => ch.id === currentChannel) ||
-        Config.channels[0];
-      Loader.loadChannel(
-        channelConfig.id,
-        channelConfig.avatar,
-        channelConfig.id,
-        true
-      );
-    });
-
-    const gainsOpt = Dom.create('div', 'dropdown-list-item bold');
-    gainsOpt.innerHTML = `
-      <div style="display: flex; align-items: center;">
-        <i class="fas fa-chart-line" style="margin-right: 10px; color: var(--primary-color); font-size: 1.2rem;"></i>
-        Top Video Gains
-      </div>
-    `;
-    dropdown.appendChild(gainsOpt);
-
-    gainsOpt.addEventListener('click', () => {
-      const input = Dom.get('searchInput');
-      if (input) input.value = 'Top Video Gains';
-      dropdown.classList.remove('show');
-
-      const currentChannel = State.currentChannel || 'mrbeast';
-      const channelConfig =
-        Config.channels.find(ch => ch.id === currentChannel) ||
-        Config.channels[0];
-      Loader.loadChannel(
-        channelConfig.id,
-        channelConfig.avatar,
-        channelConfig.id,
-        false,
-        true
-      );
-    });
-
-    const listOpt = Dom.create('div', 'dropdown-list-item bold');
-    listOpt.innerHTML = `
-    <div style="display: flex; align-items: center;">
-      <i class="fas fa-list" style="margin-right: 10px; color: var(--primary-color); font-size: 1.2rem;"></i>
-      Channel Video List
-    </div>
-  `;
-    dropdown.appendChild(listOpt);
-
-    listOpt.addEventListener('click', () => {
-      const input = Dom.get('searchInput');
-      if (input) input.value = 'Channel Video List';
-      dropdown.classList.remove('show');
-
-      const currentChannel = State.currentChannel || 'mrbeast';
-      const channelConfig =
-        Config.channels.find(ch => ch.id === currentChannel) ||
-        Config.channels[0];
-      Loader.loadChannelListing(channelConfig.id, channelConfig.avatar);
-    });
-
-    Config.channels.forEach(channel => {
-      const option = this.createChannelOption(channel);
-      dropdown.appendChild(option);
-
-      option.addEventListener('click', () => {
-        const input = Dom.get('searchInput');
-        if (input) input.value = channel.name;
-        dropdown.classList.remove('show');
-
-        this.updateVideoList(channel.id);
-
-        Loader.loadChannel(
-          channel.id,
-          channel.avatar,
-          channel.id,
-          false,
-          false
-        );
-      });
-    });
-  },
-
-  updateVideoList(channelId) {
-    const dropdown = Dom.get('dropdownList');
-    if (!dropdown) return;
-
-    const videoItems = dropdown.querySelectorAll(
-      '.dropdown-list-item:not(.bold)'
-    );
-    videoItems.forEach(item => item.remove());
-
-    this.currentDropdownChannel = channelId;
-    const videos = this.allVideosByChannel[channelId] || [];
-
-    if (videos.length > 0) {
-      this.addVideoOpts(videos, channelId);
-    }
-  },
-
-  addVideoOpts(videos, channelId) {
-    const dropdown = Dom.get('dropdownList');
-    if (!dropdown || !Array.isArray(videos)) return;
-
-    const fragment = document.createDocumentFragment();
-
-    videos.forEach(video => {
-      const item = Dom.create('div', 'dropdown-list-item');
-      item.textContent = video.title;
-      item.dataset.videoId = video.videoId;
-      item.dataset.channel = channelId;
-
-      item.addEventListener('click', e => {
-        const selectedId = e.currentTarget.dataset.videoId;
-        const videoChannel = e.currentTarget.dataset.channel;
-        const input = Dom.get('searchInput');
-        if (input) input.value = e.currentTarget.textContent;
-        dropdown.classList.remove('show');
-        Loader.loadVideo(selectedId, videoChannel);
-      });
-
-      fragment.appendChild(item);
-    });
-
-    dropdown.appendChild(fragment);
-  },
-
-  getChannelForVideo(videoId) {
-    return this.videoChannelMap.get(videoId) || 'mrbeast';
-  },
-
-  async fetchAllVideos() {
-    try {
-      const data = await Net.fetchJson(
-        `${Config.api.baseUrl}/allvideos`,
-        {},
-        60 * 60 * 1000
-      );
-      if (data?.channels) {
-        Object.entries(data.channels).forEach(([channel, videos]) => {
-          this.allVideosByChannel[channel] = videos;
-          videos.forEach(video => {
-            this.videoChannelMap.set(video.videoId, channel);
-          });
-        });
-
-        console.log(
-          `Loaded ${this.videoChannelMap.size} videos across ${
-            Object.keys(this.allVideosByChannel).length
-          } channels`
-        );
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Failed to fetch all videos:', error);
-      return false;
-    }
-  },
-
-  handleUrlParams(hasAllVideos) {
-    const params = new URLSearchParams(window.location.search);
-    const videoId = params.get('data');
-    let channelParam = params.get('channel');
-
-    const channelMap = Config.channels.reduce((acc, ch) => {
-      acc[ch.id] = ch;
-      return acc;
-    }, {});
-
-    if (!this._initialUrlHandled) {
-      this._initialUrlHandled = true;
-    }
-
-    if (videoId === 'rankings') {
-      const channel =
-        channelParam && channelMap[channelParam]
-          ? channelMap[channelParam]
-          : Config.channels[0];
-      const input = Dom.get('searchInput');
-      if (input) input.value = 'Top Video Rankings';
-
-      if (hasAllVideos) {
-        this.updateVideoList(channel.id);
-      }
-
-      Loader.loadChannel(
-        channel.id,
-        channel.avatar,
-        channel.id,
-        true,
-        false,
-        true
-      );
-    } else if (videoId === 'gains') {
-      const channel =
-        channelParam && channelMap[channelParam]
-          ? channelMap[channelParam]
-          : Config.channels[0];
-      const input = Dom.get('searchInput');
-      if (input) input.value = 'Top Video Gains';
-
-      if (hasAllVideos) {
-        this.updateVideoList(channel.id);
-      }
-
-      Loader.loadChannel(
-        channel.id,
-        channel.avatar,
-        channel.id,
-        false,
-        true,
-        true
-      );
-    } else if (videoId === 'list') {
-      const channel =
-        channelParam && channelMap[channelParam]
-          ? channelMap[channelParam]
-          : Config.channels[0];
-      const input = Dom.get('searchInput');
-      if (input) input.value = 'Channel Video List';
-
-      if (hasAllVideos) {
-        this.updateVideoList(channel.id);
-      }
-
-      Loader.loadChannelListing(channel.id, channel.avatar, true);
-    } else if (channelMap[videoId]) {
-      const channel = channelMap[videoId];
-      const input = Dom.get('searchInput');
-      if (input) input.value = channel.name;
-
-      if (hasAllVideos) {
-        this.updateVideoList(channel.id);
-      }
-
-      Loader.loadChannel(
-        channel.id,
-        channel.avatar,
-        channel.id,
-        false,
-        false,
-        true
-      );
-    } else if (videoId) {
-      const container = Dom.get('videoChart');
-      if (container) {
-        container.innerHTML =
-          '<div style="text-align:center;padding:40px;">Loading video data...</div>';
-      }
-
-      if (!channelParam && hasAllVideos) {
-        channelParam = this.getChannelForVideo(videoId);
-      }
-
-      const actualChannel = channelParam || 'mrbeast';
-
-      if (hasAllVideos) {
-        this.updateVideoList(actualChannel);
-      }
-
-      Loader.loadVideo(videoId, actualChannel, true);
-    } else {
-      this.loadDefaultVideo();
-    }
-
-    if (!this._initialUrlHandled) this._initialUrlHandled = true;
-  },
-
-  async loadDefaultVideo() {
-    try {
-      const data = await Net.fetchJson(
-        Config.api.videos.byChannel('mrbeast'),
-        {},
-        10 * 60 * 1000
-      );
-
-      if (
-        !data.videos ||
-        !Array.isArray(data.videos) ||
-        data.videos.length === 0
-      ) {
-        this.loadDefaultGains();
-        return;
-      }
-
-      const recent = data.videos.sort(
-        (a, b) => new Date(b.uploadTime) - new Date(a.uploadTime)
-      )[0];
-      const input = Dom.get('searchInput');
-      if (input) input.value = recent.title;
-      Loader.loadVideo(recent.videoId, 'mrbeast', false);
-    } catch (error) {
-      console.error('Failed to load default video:', error);
-      this.loadDefaultGains();
-    }
-  },
-
-  loadDefaultGains() {
-    const defaultCh = Config.channels[0];
-    const input = Dom.get('searchInput');
-    if (input) input.value = 'Top Video Gains';
-
-    this.updateVideoList(defaultCh.id);
-
-    Loader.loadChannel(
-      defaultCh.id,
-      defaultCh.avatar,
-      defaultCh.id,
-      false,
-      true,
-      true
-    );
-  },
-
-  needsVideoData() {
-    const params = new URLSearchParams(window.location.search);
-    const videoId = params.get('data');
-
-    return (
-      videoId &&
-      videoId !== 'rankings' &&
-      videoId !== 'gains' &&
-      !Config.channels.find(ch => ch.id === videoId)
-    );
-  },
-
-  async init() {
-    this.bindEvents();
-    this.createChannelOpts();
-    this.bindHistoryNav();
-
-    this.handleUrlParams(false);
-
-    const runBg = async () => {
-      const hasAllVideos = await this.fetchAllVideos();
-
-      if (hasAllVideos) {
-        this.updateVideoList('mrbeast');
-      }
-
-      if (this.needsVideoData()) {
-        this.handleUrlParams(hasAllVideos);
-      }
-    };
-
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(runBg);
-    } else {
-      setTimeout(runBg, 100);
-    }
-  },
-};
-
-const Loader = {
-  _loadPromises: new Map(),
-  _loadedKey: null,
-
-  async setupProfile(profileUrl) {
-    let headerLeft = document.querySelector('.header-left');
-    if (!headerLeft) {
-      headerLeft = Dom.create('div', 'header-left');
-      const header = document.querySelector('header');
-      const h1 = header?.querySelector('h1');
-      if (header && h1) {
-        header.insertBefore(headerLeft, h1);
-        headerLeft.appendChild(h1);
-      }
-    }
-
-    if (headerLeft && profileUrl) {
-      Dom.removeImg();
-      const profileImg = Dom.createImg(profileUrl);
-      headerLeft.insertBefore(profileImg, headerLeft.firstChild);
-    }
-  },
-
-  updateVideoInfo(video) {
-    const elements = {
-      thumbnail: Dom.get('videoThumbnail'),
-      videoLink: Dom.get('videoLink'),
-      uploadDate: Dom.get('uploadDate'),
-      duration: Dom.get('videoDuration'),
-    };
-
-    if (elements.thumbnail && video.thumbnail) {
-      elements.thumbnail.src = video.thumbnail;
-      elements.thumbnail.loading = 'eager';
-    }
-
-    if (elements.videoLink && video.videoId && video.title) {
-      elements.videoLink.href = `https://www.youtube.com/watch?v=${video.videoId}`;
-      elements.videoLink.textContent = video.title;
-
-      const input = Dom.get('searchInput');
-      if (input) input.value = video.title;
-    }
-
-    if (elements.uploadDate && video.uploadTime) {
-      const uploadDate = luxon.DateTime.fromISO(video.uploadTime).setZone(
-        'America/New_York'
-      );
-      elements.uploadDate.innerHTML = `Uploaded: ${uploadDate.toFormat(
-        'M/d/yyyy'
-      )} at ${uploadDate.toFormat('h:mm:ss a')} EST`;
-
-      if (video.lastUpdated) {
-        const lastUpdated = luxon.DateTime.fromISO(video.lastUpdated).setZone(
-          'America/New_York'
-        );
-        const span = Dom.create('span', 'last-updated');
-        span.textContent = ` (Stats last updated: ${lastUpdated.toFormat(
-          'M/d/yyyy'
-        )} at ${lastUpdated.toFormat('h:mm:ss a')} EST)`;
-        elements.uploadDate.appendChild(span);
-      }
-    }
-
-    if (elements.duration && video.duration) {
-      elements.duration.innerHTML = `Duration: ${video.duration}`;
-      const videoIdSpan = Dom.create('span', 'video-id');
-      videoIdSpan.textContent = ` (Video ID: ${video.videoId})`;
-      elements.duration.appendChild(videoIdSpan);
-    }
-
-    Dom.show('videoInfoCard');
-  },
-
-  async loadChannel(
-    channelId,
-    profileUrl,
-    _,
-    showRankings = false,
-    showGains = false,
-    isNavigation = false
-  ) {
-    const key = `channel:${channelId}|${
-      showRankings ? 'rank' : showGains ? 'gains' : 'stats'
-    }`;
-
-    if (this._loadPromises.has(key)) {
-      return this._loadPromises.get(key);
-    }
-
-    const p = (async () => {
-      State.reset();
-      ChartModeDropdown.reset();
-      ChartModeDropdown.hide();
-
-      if (State.isListingView) {
-        Listing.state = {
-          items: [],
-          sortKey: 'uploadTime',
-          sortDir: 'desc',
-          filter: 'all',
-          q: '',
-          loading: false,
-        };
-      }
-
-      State.currentEntityId = channelId;
-      State.currentChannel = channelId;
-      State.isRankingsView = showRankings;
-      State.isGainsView = showGains;
-      State.isListingView = false;
-
-      State.loadSettings();
-
-      if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
-
-      Search.updateVideoList(channelId);
-
-      const headerTitle = document.querySelector('header h1');
-      if (headerTitle) {
-        if (showRankings) {
-          headerTitle.textContent = 'Top Video Rankings';
-        } else if (showGains) {
-          headerTitle.textContent = 'Top Video Gains';
-        } else {
-          headerTitle.textContent = 'Channel Analytics';
-        }
-      }
-
-      Dom.removeImg();
-      await this.setupProfile(profileUrl);
-
-      const exportControls = document.querySelector('.export-controls');
-
-      if (showRankings) {
-        if (!isNavigation) {
-          Dom.updateUrl('rankings', channelId);
-        }
-        Dom.setView('rankings');
-        if (exportControls) exportControls.style.display = 'none';
-
-        const list = Dom.get('rankingsList');
-        if (list) {
-          list.innerHTML =
-            '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading rankings...</div>';
-        }
-
-        Rankings.applySettings();
-
-        try {
-          const rankings = await Rankings.fetch(
-            channelId,
-            State.rankingsSettings.filter
-          );
-
-          if (rankings.length > 0) {
-            const savedSettings = SessionSettings.getRankingsSettings();
-            if (!savedSettings) {
-              const defaults = Rankings.getDefaults(rankings);
-              State.rankingsSettings.videoCount = defaults.videoCount;
-              State.rankingsSettings.timePeriod = defaults.timePeriod;
-              Rankings.applySettings();
-            }
-
-            Rankings.display(rankings);
-          } else {
-            if (list) {
-              list.innerHTML =
-                '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No ranking data available for this channel.</div>';
-            }
-          }
-        } catch (error) {
-          if (list) {
-            list.innerHTML =
-              '<div style="text-align:center;padding:20px;color:red;">Error loading rankings. Please try again.</div>';
-          }
-        }
-      } else if (showGains) {
-        if (!isNavigation) {
-          Dom.updateUrl('gains', channelId);
-        }
-        Dom.setView('gains');
-        if (exportControls) exportControls.style.display = 'none';
-
-        const list = Dom.get('gainsList');
-        if (list) {
-          list.innerHTML =
-            '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading gains...</div>';
-        }
-
-        Gains.applySettings();
-
-        try {
-          const gains = await Gains.fetch(
-            channelId,
-            State.gainsSettings.metric,
-            State.gainsSettings.filter,
-            State.gainsSettings.period,
-            State.gainsSettings.sortMode
-          );
-
-          if (State.isGainsView) {
-            Gains.display(gains, State.gainsSettings.count);
-          }
-        } catch (error) {
-          if (list) {
-            list.innerHTML =
-              '<div style="text-align:center;padding:20px;color:red;">Error loading gains. Please try again.</div>';
-          }
-        }
-      } else {
-        if (!isNavigation) {
-          Dom.updateUrl(channelId);
-        }
-        Dom.setView('video');
-
-        if (exportControls) exportControls.style.display = 'flex';
-
-        Dom.hide('videoInfoCard');
-
-        const container = Dom.get('videoChart');
-        if (container) {
-          container.innerHTML =
-            '<div style="text-align:center;padding:40px;">Loading channel data...</div>';
-        }
-
-        const uploadCard = Dom.get('uploadCountCard');
-        if (uploadCard) uploadCard.style.display = 'flex';
-
-        const grid = document.querySelector('.stats-grid');
-        if (grid) grid.classList.remove('three-columns');
-
-        try {
-          const endpoint =
-            channelId === 'mrbeast'
-              ? Config.api.combinedHistory.mrbeast
-              : Config.api.combinedHistory.byChannel(channelId);
-
-          const combinedData = await Net.fetchJson(
-            endpoint,
-            {},
-            10 * 60 * 1000
-          );
-
-          if (Array.isArray(combinedData)) {
-            State.rawData = combinedData;
-
-            State._dailyCache = DataProcessor.processDaily(combinedData);
-
-            await ChartModeDropdown.loadAndDisplayData();
-            Stats.update();
-
-            const dailyData = State._dailyCache || [];
-            const currentData = combinedData[combinedData.length - 1];
-            Tables.create(dailyData, currentData);
-
-            ChartModeDropdown.show();
-
-            if ('requestIdleCallback' in window) {
-              requestIdleCallback(() => {
-                Rankings.prefetch(State.currentChannel);
-                Gains.prefetch(State.currentChannel);
-                Listing.prefetch(State.currentChannel);
-              });
-            } else {
-              setTimeout(() => {
-                Rankings.prefetch(State.currentChannel);
-                Gains.prefetch(State.currentChannel);
-                Listing.prefetch(State.currentChannel);
-              }, 150);
-            }
-          } else {
-            throw new Error('Invalid data format received');
-          }
-        } catch (error) {
-          const chart = Dom.get('videoChart');
-          if (chart) {
-            chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load data: ${error.message}<br>Please try again.</div>`;
-          }
-        }
-      }
-
-      this._loadedKey = key;
-    })();
-
-    this._loadPromises.set(key, p);
-    try {
-      await p;
-    } finally {
-      this._loadPromises.delete(key);
-    }
-    return p;
-  },
-
-  async loadChannelListing(channelId, profileUrl, isNavigation = false) {
-    const key = `channel-list:${channelId}`;
-    if (this._loadPromises.has(key)) {
-      return this._loadPromises.get(key);
-    }
-    if (this._loadedKey === key && !isNavigation) {
-      return;
-    }
-
-    const p = (async () => {
-      State.reset();
-      ChartModeDropdown.reset();
-      ChartModeDropdown.hide();
-
-      State.currentEntityId = channelId;
-      State.currentChannel = channelId;
-      State.isRankingsView = false;
-      State.isGainsView = false;
-      State.isListingView = true;
-
-      if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
-
-      Search.updateVideoList(channelId);
-
-      const headerTitle = document.querySelector('header h1');
-      if (headerTitle) {
-        headerTitle.textContent = 'Channel Video List';
-      }
-
-      Dom.removeImg();
-      await this.setupProfile(profileUrl);
-
-      if (!isNavigation) {
-        Dom.updateUrl('list', channelId);
-      }
-      Dom.setView('listing');
-
-      const exportControls = document.querySelector('.export-controls');
-      if (exportControls) exportControls.style.display = 'none';
-
-      Listing.applySettings();
-      await Listing.refresh();
-    })();
-
-    this._loadPromises.set(key, p);
-    try {
-      await p;
-    } finally {
-      this._loadPromises.delete(key);
-    }
-    return p;
-  },
-
-  async loadVideo(videoId, channelId = 'mrbeast', isNavigation = false) {
-    const key = `video:${videoId}|${channelId}`;
-
-    if (this._loadPromises.has(key)) {
-      return this._loadPromises.get(key);
-    }
-    if (this._loadedKey === key && !isNavigation) {
-      return;
-    }
-
-    const p = (async () => {
-      State.reset();
-      ChartModeDropdown.reset();
-      State.currentEntityId = videoId;
-      State.currentChannel = channelId;
-      State.isRankingsView = false;
-      State.isGainsView = false;
-
-      if (!isNavigation) window.scrollTo({ top: 0, behavior: 'smooth' });
-
-      Search.updateVideoList(channelId);
-
-      if (!isNavigation) {
-        if (channelId !== 'mrbeast') {
-          Dom.updateUrl(videoId, channelId);
-        } else {
-          Dom.updateUrl(videoId);
-        }
-      }
-
-      Dom.setView('video');
-
-      const exportControls = document.querySelector('.export-controls');
-      if (exportControls) exportControls.style.display = 'flex';
-
-      const container = Dom.get('videoChart');
-      if (container) {
-        container.innerHTML =
-          '<div style="text-align:center;padding:40px;">Loading video data...</div>';
-      }
-
-      const uploadCard = Dom.get('uploadCountCard');
-      if (uploadCard) uploadCard.style.display = 'none';
-
-      const grid = document.querySelector('.stats-grid');
-      if (grid) grid.classList.add('three-columns');
-
-      const headerTitle = document.querySelector('header h1');
-      if (headerTitle) headerTitle.textContent = 'Video Analytics';
-
-      if (State.selectedMetricIndex === 3) {
-        State.selectedMetricIndex = 0;
-        document.querySelectorAll('.stat-card').forEach((card, index) => {
-          card.classList.toggle('active', index === 0);
-        });
-      }
-
-      Dom.removeImg();
-
-      try {
-        let endpoint = Config.api.videoStats.byChannel(channelId, videoId);
-        let video = null;
-        try {
-          video = await Net.fetchJson(endpoint, {}, 10 * 60 * 1000);
-        } catch (e) {
-          endpoint = Config.api.videoStats.base + videoId;
-          video = await Net.fetchJson(endpoint, {}, 10 * 60 * 1000);
-        }
-
-        if (video?.stats && Array.isArray(video.stats)) {
-          State.videoUploadTime = video.uploadTime || null;
-
-          this.updateVideoInfo(video);
-
-          const filtered = video.stats.filter(
-            stat => stat.views != null && stat.likes != null
-          );
-
-          State.rawData = filtered;
-
-          State._dailyCache = DataProcessor.processDaily(filtered, true);
-
-          await ChartModeDropdown.loadAndDisplayData();
-          Stats.update();
-
-          const dailyData = State._dailyCache || [];
-          const currentData = filtered[filtered.length - 1];
-          Tables.create(dailyData, currentData, true);
-
-          Dom.show('videoInfoCard');
-
-          ChartModeDropdown.show();
-
-          if ('requestIdleCallback' in window) {
-            requestIdleCallback(() => {
-              Rankings.prefetch(State.currentChannel);
-              Gains.prefetch(State.currentChannel);
-              Listing.prefetch(State.currentChannel);
-            });
-          } else {
-            setTimeout(() => {
-              Rankings.prefetch(State.currentChannel);
-              Gains.prefetch(State.currentChannel);
-              Listing.prefetch(State.currentChannel);
-            }, 150);
-          }
-
-          const sevenDhAvailable =
-            State.currentEntityId !== State.currentChannel &&
-            State.getMetricName() !== 'comments';
-
-          if (sevenDhAvailable && !State.hourlyData) {
-            const endDt = luxon.DateTime.now().setZone('America/New_York');
-            const startDt = endDt.minus({ days: Config.hourly.defaultDays });
-            const startISO = startDt.toISODate();
-            const endISO = endDt.toISODate();
-
-            const doPrefetch = async () => {
-              try {
-                State.hourlyData = await ChartModeDropdown.fetchHourlyData(
-                  State.currentEntityId,
-                  State.currentChannel,
-                  startISO,
-                  endISO
-                );
-              } catch {}
-            };
-
-            if ('requestIdleCallback' in window) {
-              requestIdleCallback(doPrefetch);
-            } else {
-              setTimeout(doPrefetch, 200);
-            }
-          }
-        } else {
-          throw new Error('Invalid video data format');
-        }
-      } catch (error) {
-        const chart = Dom.get('videoChart');
-        if (chart) {
-          chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load video data: ${error.message}<br>Please try again.</div>`;
-        }
-      }
-
-      this._loadedKey = key;
-    })();
-
-    this._loadPromises.set(key, p);
-    try {
-      await p;
-    } finally {
-      this._loadPromises.delete(key);
-    }
-
-    return p;
-  },
+  } catch {}
 };
 
 const Listing = {
@@ -4898,9 +2915,7 @@ const Listing = {
     } catch (e) {
       if (!cached) {
         this.state.items = [];
-        if (State.isListingView) {
-          this.render();
-        }
+        if (State.isListingView) this.render();
       }
       console.error('Listing fetch error:', e);
     } finally {
@@ -4910,10 +2925,8 @@ const Listing = {
 
   updateInstant() {
     if (!State.isListingView || !State.currentChannel) return;
-
     const cacheKey = `${State.currentChannel}-${this.state.filter}`;
     const cached = this.cache.get(cacheKey);
-
     if (cached) {
       this.state.items = cached;
       this.render();
@@ -4987,32 +3000,32 @@ const Listing = {
       const typeLabel = v.isShort ? 'Short' : 'Long';
       const rank = index + 1;
       tr.innerHTML = `
-	  <td class="listing-rank-cell">
-	    <div class="listing-rank">${rank}</div>
-	  </td>
-	  <td class="listing-video-cell">     
-      <div class="listing-video">
-         <img
-           class="listing-video-thumb"
-           src="${v.thumbnail}"
-           alt=""
-           loading="lazy"
-         />
-         <div class="listing-video-title">${v.title || ''}</div>
-       </div>
-     </td>
-     <td class="listing-num">${(v.views || 0).toLocaleString()}</td>
-     <td class="listing-num">${(v.likes || 0).toLocaleString()}</td>
-     <td class="listing-num">${(v.comments || 0).toLocaleString()}</td>
-     <td>${v.duration || ''}</td>
-     <td>${this.formatDate(v.uploadTime)}</td>
-     <td>
-       <span class="type-pill ${
-         v.isShort ? 'short' : 'long'
-       }">${typeLabel}</span>
-     </td>
-   `;
-
+		      <td class="listing-rank-cell" data-label="#">
+		        <div class="listing-rank">${rank}</div>
+		      </td>
+		      <td class="listing-video-cell" data-label="Video">     
+	          <div class="listing-video">
+	            <img class="listing-video-thumb" src="${
+                v.thumbnail
+              }" alt="" loading="lazy"/>
+	            <div class="listing-video-title">${v.title || ''}</div>
+	          </div>
+	        </td>
+	        <td class="listing-num" data-label="Views">${(
+            v.views || 0
+          ).toLocaleString()}</td>
+	        <td class="listing-num" data-label="Likes">${(
+            v.likes || 0
+          ).toLocaleString()}</td>
+	        <td class="listing-num" data-label="Comments">${(
+            v.comments || 0
+          ).toLocaleString()}</td>
+	        <td data-label="Duration">${v.duration || ''}</td>
+	        <td data-label="Upload Date">${this.formatDate(v.uploadTime)}</td>
+	        <td data-label="Type"><span class="type-pill ${
+            v.isShort ? 'short' : 'long'
+          }">${typeLabel}</span></td>
+	      `;
       tr.addEventListener('click', () => {
         Loader.loadVideo(v.videoId, State.currentChannel);
         const searchInput = Dom.get('searchInput');
@@ -5061,6 +3074,7 @@ const Listing = {
           this.state.sortKey = key;
           this.state.sortDir = 'desc';
         }
+
         document.querySelectorAll('.listing-table th.sortable').forEach(h => {
           h.classList.remove('sorted-asc', 'sorted-desc');
           h.removeAttribute('aria-sort');
@@ -5085,13 +3099,12 @@ const Listing = {
         } else {
           applyIndicator(this.state.sortKey, this.state.sortDir);
         }
-
         this.render();
       });
     });
 
     document.querySelectorAll('.listing-filter-button').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', () => {
         document
           .querySelectorAll('.listing-filter-button')
           .forEach(b => b.classList.remove('active'));
@@ -5115,20 +3128,20 @@ const Listing = {
     const tableWrapper = document.querySelector('.listing-table-wrapper');
     if (tableWrapper) {
       tableWrapper.addEventListener('scroll', e => {
-        if (e.target.scrollTop > 0) {
-          e.target.classList.add('scrolled');
-        } else {
-          e.target.classList.remove('scrolled');
-        }
+        if (e.target.scrollTop > 0) e.target.classList.add('scrolled');
+        else e.target.classList.remove('scrolled');
       });
+
+      Dom.enableHorizontalWheelScroll(tableWrapper, { requireShift: true });
 
       tableWrapper.addEventListener(
         'wheel',
         e => {
+          if (e.shiftKey) return;
+
           const { scrollTop, scrollHeight, clientHeight } = tableWrapper;
           const isScrollingUp = e.deltaY < 0;
           const isScrollingDown = e.deltaY > 0;
-
           if (
             (isScrollingUp && scrollTop === 0) ||
             (isScrollingDown && scrollTop + clientHeight >= scrollHeight)
@@ -5242,7 +3255,6 @@ const Export = {
 
     const fullRange = [];
     let currentTime = start;
-
     while (currentTime <= end) {
       fullRange.push(currentTime);
       currentTime = currentTime.plus({ hours: 1 });
@@ -5256,11 +3268,9 @@ const Export = {
 
     let csv =
       'data:text/csv;charset=utf-8,Timestamp (EST),Views,Likes,Comments\n';
-
     fullRange.forEach(time => {
       const hourKey = time.toFormat('yyyy-MM-dd-HH');
       const entry = dataMap.get(hourKey);
-
       if (entry) {
         csv += `${time.toFormat('yyyy-MM-dd HH:mm:ss')},${entry.views},${
           entry.likes
@@ -5269,7 +3279,6 @@ const Export = {
         csv += `${time.toFormat('yyyy-MM-dd HH:mm:ss')},,,\n`;
       }
     });
-
     return csv;
   },
 
@@ -5288,7 +3297,6 @@ const Export = {
       console.error('No data available for export');
       return;
     }
-
     const useTimestamp = !!State.rawData[0]?.timestamp;
     const timestamps = State.rawData
       .filter(entry => {
@@ -5317,7 +3325,6 @@ const Export = {
       console.error('No data found for export');
       return;
     }
-
     const csvContent = this.generateCsv(timestamps, mode);
     if (csvContent) {
       const suffix = mode === 'daily' ? '-daily' : '-hourly';
@@ -5328,37 +3335,29 @@ const Export = {
   init() {
     const exportBtn = Dom.get('exportButton');
     const menu = Dom.get('exportMenu');
-
     if (exportBtn && menu) {
       const getItems = () =>
         Array.from(menu.querySelectorAll('.export-menu-item'));
-
       const openMenu = (focusFirst = true) => {
         menu.classList.add('show');
         menu.setAttribute('aria-hidden', 'false');
         exportBtn.setAttribute('aria-expanded', 'true');
         if (focusFirst) getItems()[0]?.focus();
       };
-
       const closeMenu = (returnFocus = true) => {
         menu.classList.remove('show');
         menu.setAttribute('aria-hidden', 'true');
         exportBtn.setAttribute('aria-expanded', 'false');
         if (returnFocus) exportBtn.focus();
       };
-
       const toggleMenu = e => {
         e.preventDefault();
         e.stopPropagation();
-        if (menu.classList.contains('show')) {
-          closeMenu(false);
-        } else {
-          openMenu(true);
-        }
+        if (menu.classList.contains('show')) closeMenu(false);
+        else openMenu(true);
       };
 
       exportBtn.addEventListener('click', toggleMenu);
-
       exportBtn.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -5419,23 +3418,6 @@ const Export = {
           closeMenu();
         }
       });
-
-      // Allow smooth wheel/touch scrolling if menu ever grows tall
-      lockScroll(menu);
-    }
-
-    const tableResponsive = document.querySelector('.table-responsive');
-    if (tableResponsive) {
-      tableResponsive.addEventListener(
-        'wheel',
-        e => {
-          if (tableResponsive.scrollHeight > tableResponsive.clientHeight) {
-            e.preventDefault();
-            tableResponsive.scrollTop += e.deltaY;
-          }
-        },
-        { passive: false }
-      );
     }
   },
 };
@@ -5443,15 +3425,15 @@ const Export = {
 const Layout = {
   setupResponsive() {
     const headerControls = document.querySelector('.header-controls');
-    const searchBar = document.querySelector('.search-bar');
     const themeToggle = Dom.get('themeToggle');
     const exportControls = document.querySelector('.export-controls');
 
-    if (!headerControls || !searchBar || !themeToggle || !exportControls)
-      return;
+    if (!headerControls || !themeToggle || !exportControls) return;
 
     const existing = document.querySelector('.mobile-buttons');
-    if (existing) existing.remove();
+    if (existing && !existing.parentElement) {
+      existing.remove();
+    }
 
     if (window.innerWidth <= Config.responsive.breakpoints.tablet) {
       let mobileButtons = document.querySelector('.mobile-buttons');
@@ -5462,9 +3444,7 @@ const Layout = {
 
       mobileButtons.appendChild(themeToggle);
       mobileButtons.appendChild(exportControls);
-      headerControls.insertBefore(searchBar, mobileButtons);
     } else {
-      headerControls.appendChild(searchBar);
       headerControls.appendChild(themeToggle);
       headerControls.appendChild(exportControls);
     }
@@ -5475,33 +3455,27 @@ const Layout = {
       'resize',
       Dom.debounce(() => {
         this.setupResponsive();
-
         if (State.chart && State.isChartReady) {
           const originalAnimation = State.chart.options.chart.animation;
-
           State.chart.update(
             {
               chart: { animation: false },
-              plotOptions: {
-                series: { animation: false },
-              },
+              plotOptions: { series: { animation: false } },
             },
             false
           );
-
           Charts.redraw();
-
           setTimeout(() => {
             if (State.chart) {
               State.chart.update(
                 {
                   chart: { animation: originalAnimation },
                   plotOptions: {
-                    series: {
-                      animation: State.isMobile()
-                        ? false
-                        : { duration: 400, easing: 'easeOutQuart' },
-                    },
+                    series: State.isMobile()
+                      ? { animation: false }
+                      : {
+                          animation: { duration: 400, easing: 'easeOutQuart' },
+                        },
                   },
                 },
                 false
@@ -5516,67 +3490,2170 @@ const Layout = {
   },
 };
 
-function lockScroll(el) {
-  if (!el) return;
+const Theme = {
+  updateIcons(theme) {
+    const iconColor = theme === 'light' ? '000000' : 'ffffff';
+    const themeIcon = Dom.get('themeIcon');
+    const exportIcon = Dom.get('exportIcon');
+    if (themeIcon)
+      themeIcon.src = `https://img.icons8.com/material-outlined/24/${iconColor}/contrast.png`;
+    if (exportIcon)
+      exportIcon.src = `https://img.icons8.com/material-outlined/24/${iconColor}/download.png`;
+  },
 
-  el.addEventListener(
-    'wheel',
-    e => {
-      const delta = e.deltaY;
-      const atTop = el.scrollTop <= 0;
-      const atBottom =
-        Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight;
+  bindToggle() {
+    const toggle = Dom.get('themeToggle');
+    if (!toggle) return;
+    toggle.addEventListener('click', () => {
+      const current = document.body.getAttribute('data-theme') || 'dark';
+      const newTheme = current === 'light' ? 'dark' : 'light';
 
-      if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
-        e.preventDefault();
+      document.documentElement.classList.add('no-transitions');
+      document.documentElement.setAttribute('data-theme', newTheme);
+      document.body.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      this.updateIcons(newTheme);
+
+      if (State.chart) {
+        setTimeout(() => {
+          const newCardBg = Dom.getCssVar('--card-background-color');
+          const newBorderColor = Dom.getCssVar('--border-color');
+          const newTextColor = Dom.getCssVar('--text-color');
+          State.chart.update(
+            {
+              chart: {
+                backgroundColor: newCardBg,
+                plotBackgroundColor: newCardBg,
+                plotBorderColor: newBorderColor,
+                animation: false,
+              },
+              title: { style: { color: newTextColor } },
+              xAxis: {
+                title: { style: { color: newTextColor } },
+                labels: { style: { color: newTextColor } },
+                gridLineColor: newBorderColor,
+                lineColor: newBorderColor,
+                tickColor: newBorderColor,
+                minorGridLineColor: newBorderColor,
+              },
+              yAxis: {
+                title: { style: { color: newTextColor } },
+                labels: { style: { color: newTextColor } },
+                gridLineColor: newBorderColor,
+                lineColor: newBorderColor,
+                tickColor: newBorderColor,
+                minorGridLineColor: newBorderColor,
+              },
+              legend: { itemStyle: { color: newTextColor } },
+            },
+            true
+          );
+        }, 10);
       }
-    },
-    { passive: false }
-  );
 
-  let startY = 0;
-  el.addEventListener(
-    'touchstart',
-    e => {
-      startY = e.touches[0].clientY;
-    },
-    { passive: true }
-  );
+      setTimeout(() => {
+        document.documentElement.classList.remove('no-transitions');
+      }, 100);
+    });
+  },
 
-  el.addEventListener(
-    'touchmove',
-    e => {
-      const currentY = e.touches[0].clientY;
-      const delta = startY - currentY;
-      const atTop = el.scrollTop <= 0;
-      const atBottom =
-        Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight;
+  init() {
+    const stored = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', stored);
+    document.body.setAttribute('data-theme', stored);
+    this.updateIcons(stored);
+    this.bindToggle();
+  },
+};
 
-      if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
-        e.preventDefault();
+const ChannelsBar = {
+  el: null,
+  searchInput: null,
+  searchToggle: null,
+  searchContainer: null,
+  leftArrow: null,
+  rightArrow: null,
+  pillsWrapper: null,
+  pillsContainer: null,
+  fadeLeft: null,
+  fadeRight: null,
+  allChannels: [],
+  isSearchOpen: false,
+  lastQuery: '',
+
+  create() {
+    this.el = Dom.get('channelsBar');
+    if (!this.el) return;
+    this.el.innerHTML = '';
+
+    this.allChannels = Config.channels.slice();
+
+    this.searchContainer = Dom.create('div', 'channels-search-container');
+    this.searchContainer.innerHTML = `
+      <button class="channels-search-toggle" type="button" aria-label="Search channels" aria-expanded="false">
+        <i class="fas fa-search"></i>
+      </button>
+      <input 
+        type="text" 
+        class="channels-search-input" 
+        placeholder="Search channels..."
+        aria-label="Search channels"
+      />
+    `;
+    this.el.appendChild(this.searchContainer);
+
+    this.searchToggle = this.searchContainer.querySelector(
+      '.channels-search-toggle'
+    );
+    this.searchInput = this.searchContainer.querySelector(
+      '.channels-search-input'
+    );
+
+    this.searchToggle.addEventListener('click', e => {
+      e.stopPropagation();
+      this.toggleSearch();
+    });
+
+    this.searchInput.addEventListener('input', e => {
+      this.filterChannels(e.target.value);
+    });
+
+    this.searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        this.closeSearch();
       }
-    },
-    { passive: false }
-  );
-}
+    });
 
-const dropdown = Dom.get('dropdownList');
-if (dropdown) lockScroll(dropdown);
+    this.searchInput.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (this.searchInput.value.trim() === '') {
+          this.closeSearch();
+        }
+      }, 150);
+    });
+
+    document.addEventListener('click', e => {
+      if (
+        this.isSearchOpen &&
+        !this.searchContainer.contains(e.target) &&
+        this.searchInput.value.trim() === ''
+      ) {
+        this.closeSearch();
+      }
+    });
+
+    this.leftArrow = Dom.create(
+      'button',
+      'channels-nav-arrow channels-nav-left'
+    );
+    this.leftArrow.innerHTML = '<i class="fas fa-chevron-left"></i>';
+    this.leftArrow.setAttribute('type', 'button');
+    this.leftArrow.setAttribute('aria-label', 'Scroll left');
+    this.el.appendChild(this.leftArrow);
+
+    this.pillsWrapper = Dom.create('div', 'channels-pills-wrapper');
+    this.el.appendChild(this.pillsWrapper);
+
+    this.pillsContainer = Dom.create('div', 'channels-pills-container');
+    this.pillsWrapper.appendChild(this.pillsContainer);
+
+    this.fadeLeft = Dom.create('div', 'channels-fade channels-fade-left');
+    this.fadeRight = Dom.create('div', 'channels-fade channels-fade-right');
+    this.pillsWrapper.appendChild(this.fadeLeft);
+    this.pillsWrapper.appendChild(this.fadeRight);
+
+    this.rightArrow = Dom.create(
+      'button',
+      'channels-nav-arrow channels-nav-right'
+    );
+    this.rightArrow.innerHTML = '<i class="fas fa-chevron-right"></i>';
+    this.rightArrow.setAttribute('type', 'button');
+    this.rightArrow.setAttribute('aria-label', 'Scroll right');
+    this.el.appendChild(this.rightArrow);
+
+    this.renderChannels(this.allChannels);
+    this.bindArrowEvents();
+
+    if (this.pillsContainer) {
+      Dom.enableHorizontalWheelScroll(this.pillsContainer, {
+        requireShift: false,
+        lockPage: true,
+      });
+
+      this.pillsContainer.addEventListener('scroll', () => {
+        this.updateFades();
+      });
+
+      const resizeObserver = new ResizeObserver(() => {
+        this.updateFades();
+      });
+      resizeObserver.observe(this.pillsContainer);
+    }
+
+    this.updateFades();
+    this.highlight(State.currentChannel);
+  },
+
+  toggleSearch() {
+    if (this.isSearchOpen) {
+      this.closeSearch();
+    } else {
+      this.openSearch();
+    }
+  },
+
+  openSearch() {
+    if (!this.searchInput || !this.searchToggle) return;
+    this.isSearchOpen = true;
+    this.searchInput.classList.add('visible');
+    this.searchToggle.classList.add('active');
+    this.searchToggle.setAttribute('aria-expanded', 'true');
+    setTimeout(() => {
+      this.searchInput.focus();
+    }, 50);
+  },
+
+  closeSearch() {
+    if (!this.searchInput || !this.searchToggle) return;
+    this.isSearchOpen = false;
+    this.searchInput.classList.remove('visible');
+    this.searchToggle.classList.remove('active');
+    this.searchToggle.setAttribute('aria-expanded', 'false');
+    this.searchInput.value = '';
+    this.renderChannels(this.allChannels);
+    this.highlight(State.currentChannel);
+    this.updateFades();
+    this.lastQuery = '';
+  },
+
+  renderChannels(channels) {
+    if (!this.pillsContainer) return;
+
+    this.pillsContainer.innerHTML = '';
+
+    channels.forEach(ch => {
+      const pill = Dom.create('button', 'channel-pill');
+      pill.setAttribute('type', 'button');
+      pill.dataset.channel = ch.id;
+      pill.innerHTML = `
+        <img src="${ch.avatar}" alt="${ch.name}" loading="lazy" />
+        <span>${ch.name}</span>
+      `;
+      pill.addEventListener('click', () => {
+        const currentTab = ChannelTabs.getActiveTab() || 'combined';
+        Router.goChannelTab(ch.id, currentTab);
+      });
+      this.pillsContainer.appendChild(pill);
+    });
+  },
+
+  filterChannels(query) {
+    const q = query.toLowerCase().trim();
+    this.lastQuery = q;
+
+    if (!q) {
+      this.renderChannels(this.allChannels);
+      this.highlight(State.currentChannel);
+      this.updateFades();
+      return;
+    }
+
+    const filtered = this.allChannels.filter(
+      ch => ch.name.toLowerCase().includes(q) || ch.id.toLowerCase().includes(q)
+    );
+
+    this.renderChannels(filtered);
+    this.highlight(State.currentChannel);
+    this.updateFades();
+  },
+
+  bindArrowEvents() {
+    if (!this.leftArrow || !this.rightArrow || !this.pillsContainer) return;
+
+    const scrollAmount = 250;
+
+    this.leftArrow.addEventListener('click', e => {
+      e.preventDefault();
+      this.pillsContainer.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+    });
+
+    this.rightArrow.addEventListener('click', e => {
+      e.preventDefault();
+      this.pillsContainer.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    });
+
+    this.leftArrow.addEventListener('touchstart', e => {
+      e.preventDefault();
+      this.pillsContainer.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+    });
+
+    this.rightArrow.addEventListener('touchstart', e => {
+      e.preventDefault();
+      this.pillsContainer.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    });
+  },
+
+  updateFades() {
+    if (!this.pillsContainer || !this.leftArrow || !this.rightArrow) return;
+
+    const { scrollLeft, scrollWidth, clientWidth } = this.pillsContainer;
+    const isScrollable = scrollWidth > clientWidth + 2;
+
+    if (!isScrollable) {
+      this.leftArrow.classList.remove('visible');
+      this.rightArrow.classList.remove('visible');
+      this.fadeLeft.classList.remove('visible');
+      this.fadeRight.classList.remove('visible');
+      return;
+    }
+
+    if (scrollLeft > 5) {
+      this.leftArrow.classList.add('visible');
+      this.fadeLeft.classList.add('visible');
+    } else {
+      this.leftArrow.classList.remove('visible');
+      this.fadeLeft.classList.remove('visible');
+    }
+
+    if (scrollLeft < scrollWidth - clientWidth - 5) {
+      this.rightArrow.classList.add('visible');
+      this.fadeRight.classList.add('visible');
+    } else {
+      this.rightArrow.classList.remove('visible');
+      this.fadeRight.classList.remove('visible');
+    }
+  },
+
+  highlight(channelId) {
+    if (!this.pillsContainer) return;
+    this.pillsContainer.querySelectorAll('.channel-pill').forEach(el => {
+      el.classList.toggle('active', el.dataset.channel === channelId);
+    });
+  },
+};
+
+const ChannelTabs = {
+  el: null,
+  tabs: [
+    { id: 'combined', icon: 'fa-chart-area', label: 'Channel' },
+    { id: 'videos', icon: 'fa-video', label: 'Videos' },
+    { id: 'rankings', icon: 'fa-trophy', label: 'Video Rankings' },
+    { id: 'gains', icon: 'fa-chart-line', label: 'Video Gains' },
+    { id: 'listing', icon: 'fa-list', label: 'Video List' },
+  ],
+  render() {
+    this.el = Dom.get('channelTabs');
+    if (!this.el) return;
+    this.el.innerHTML = '';
+    this.tabs.forEach(t => {
+      const btn = Dom.create('button', 'channel-tab');
+      btn.id = `tab-${t.id}`;
+      btn.setAttribute('type', 'button');
+      btn.setAttribute('role', 'tab');
+      btn.dataset.tab = t.id;
+      btn.innerHTML = `<i class="fas ${t.icon}"></i> ${t.label}`;
+      btn.addEventListener('click', () => {
+        Router.goChannelTab(State.currentChannel, t.id);
+      });
+      this.el.appendChild(btn);
+    });
+  },
+  setActive(id) {
+    if (!this.el) return;
+    this.el.querySelectorAll('.channel-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === id);
+    });
+  },
+  getActiveTab() {
+    if (!this.el) return null;
+    const active = this.el.querySelector('.channel-tab.active');
+    return active ? active.dataset.tab : null;
+  },
+};
+
+const ChannelVideos = {
+  grid: null,
+  empty: null,
+  pageSize: 60,
+  filteredItems: [],
+  visibleCount: 0,
+  _scrollHandler: null,
+
+  async load(channelId) {
+    State.isVideosGridView = true;
+    Dom.setMainView('videos');
+
+    const headerTitle = document.querySelector('header h1');
+    if (headerTitle) headerTitle.textContent = 'Channel Videos';
+
+    this.grid = Dom.get('videosGrid');
+    this.empty = Dom.get('videosGridEmpty');
+    if (this.grid) this.grid.innerHTML = '';
+
+    const videos = await Listing.fetch(channelId, 'all');
+    State.videosGrid.items = Array.isArray(videos) ? videos : [];
+
+    this.applyFiltersAndRender();
+  },
+
+  applyFiltersAndRender() {
+    if (!this.grid) return;
+    const { filter, sortKey, sortDir, q } = State.videosGrid;
+
+    let list = State.videosGrid.items.slice();
+
+    if (filter === 'short') list = list.filter(v => v.isShort);
+    else if (filter === 'long') list = list.filter(v => !v.isShort);
+
+    if (q && q.trim()) {
+      const qq = q.trim().toLowerCase();
+      list = list.filter(v => (v.title || '').toLowerCase().includes(qq));
+    }
+
+    list.sort((a, b) => Listing.compare(a, b, sortKey, sortDir));
+
+    this.filteredItems = list;
+    this.visibleCount = Math.min(this.pageSize, this.filteredItems.length);
+    this.renderVisible(0);
+
+    const subtitle = Dom.get('videosSubtitle');
+    if (subtitle) {
+      const label = filter === 'short' ? 'shorts' : 'videos';
+      const total = State.videosGrid.items.length;
+      const available = this.filteredItems.length;
+      subtitle.textContent = q
+        ? `${available.toLocaleString()} of ${total.toLocaleString()} ${label} (filtered)`
+        : `${available.toLocaleString()} ${label}`;
+    }
+  },
+
+  renderVisible(startIndex = 0) {
+    if (!this.grid || !this.empty) return;
+
+    if (!this.filteredItems || this.filteredItems.length === 0) {
+      this.grid.innerHTML = '';
+      this.empty.style.display = 'block';
+      return;
+    }
+    this.empty.style.display = 'none';
+
+    if (startIndex === 0) this.grid.innerHTML = '';
+
+    const frag = document.createDocumentFragment();
+    for (let i = startIndex; i < this.visibleCount; i++) {
+      const v = this.filteredItems[i];
+      if (!v) continue;
+
+      const card = Dom.create('div', 'video-card');
+      card.innerHTML = `
+        <img class="video-card-thumb" src="${
+          v.thumbnail
+        }" alt="" loading="lazy" />
+        <div class="video-card-body">
+          <div class="video-card-title">${v.title || ''}</div>
+          <div class="video-card-meta">
+            <span><i class="fas fa-eye"></i> ${(
+              v.views || 0
+            ).toLocaleString()}</span>
+            <span><i class="fas fa-thumbs-up"></i> ${(
+              v.likes || 0
+            ).toLocaleString()}</span>
+          </div>
+          <div class="video-card-badges">
+            <span class="type-badge ${v.isShort ? 'short' : 'long'}">
+              ${v.isShort ? 'Short' : 'Long'}
+            </span>
+          </div>
+        </div>
+      `;
+      card.addEventListener('click', () => {
+        Loader.loadVideo(v.videoId, State.currentChannel);
+        const input = Dom.get('searchInput');
+        if (input) input.value = v.title || '';
+      });
+      frag.appendChild(card);
+    }
+
+    this.grid.appendChild(frag);
+  },
+
+  loadMoreIfNeeded() {
+    if (!State.isVideosGridView) return;
+    if (!this.filteredItems || !this.filteredItems.length) return;
+    if (this.visibleCount >= this.filteredItems.length) return;
+
+    const scrollBottom = window.innerHeight + window.scrollY;
+    const threshold = document.body.offsetHeight - window.innerHeight * 2;
+    if (scrollBottom < threshold) return;
+
+    const prevCount = this.visibleCount;
+    this.visibleCount = Math.min(
+      this.visibleCount + this.pageSize,
+      this.filteredItems.length
+    );
+
+    if (this.visibleCount > prevCount) {
+      this.renderVisible(prevCount);
+    }
+  },
+
+  bindInfiniteScroll() {
+    if (this._scrollHandler) return;
+    this._scrollHandler = Dom.debounce(() => this.loadMoreIfNeeded(), 20);
+    window.addEventListener('scroll', this._scrollHandler, { passive: true });
+  },
+
+  unbindInfiniteScroll() {
+    if (this._scrollHandler) {
+      window.removeEventListener('scroll', this._scrollHandler);
+      this._scrollHandler = null;
+    }
+  },
+
+  bindControls() {
+    document.querySelectorAll('.videos-filter-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document
+          .querySelectorAll('.videos-filter-button')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        State.videosGrid.filter = btn.dataset.filter;
+        window.scrollTo(0, 0);
+        this.applyFiltersAndRender();
+      });
+    });
+
+    document.querySelectorAll('.videos-sort-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document
+          .querySelectorAll('.videos-sort-button')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        State.videosGrid.sortKey = btn.dataset.sort;
+        State.videosGrid.sortDir = btn.dataset.dir || 'desc';
+        window.scrollTo(0, 0);
+        this.applyFiltersAndRender();
+      });
+    });
+
+    const searchInput = Dom.get('videosSearchInput');
+    if (searchInput) {
+      searchInput.addEventListener(
+        'input',
+        Dom.debounce(e => {
+          State.videosGrid.q = e.target.value || '';
+          if (State.isVideosGridView) {
+            window.scrollTo(0, 0);
+            this.applyFiltersAndRender();
+          }
+        }, 150)
+      );
+    }
+  },
+};
+
+const ChartModeDropdown = {
+  dropdown: null,
+  gainsToggle: null,
+  _lastAvailableModes: null,
+  _isRefreshing: false,
+
+  hasRenderableChart() {
+    return (
+      !State.isRankingsView &&
+      !State.isGainsView &&
+      !State.isVideosGridView &&
+      !!State.chart &&
+      (!State.isHourlyMode
+        ? (State.processedData?.timestamps?.length || 0) > 0
+        : !!State.hourlyData?.dates?.length)
+    );
+  },
+
+  create() {
+    if (this.dropdown) return this.dropdown;
+
+    const chartContainer = document.querySelector('.chart-container');
+    if (!chartContainer) return null;
+
+    this.dropdown = Dom.create('div', 'chart-mode-dropdown');
+    this.dropdown.innerHTML = `
+      <button class="chart-mode-button" id="chartModeButton">
+        <span class="chart-mode-text"></span>
+        <i class="fas fa-chevron-down chart-mode-arrow"></i>
+      </button>
+      <div class="chart-mode-options" id="chartModeOptions"></div>
+    `;
+    this.dropdown.style.display = 'none';
+
+    this.gainsToggle = Dom.create('button', 'chart-gains-toggle');
+    this.gainsToggle.innerHTML = `
+      <i class="fas fa-chart-line"></i>
+      <span>Daily Gains</span>
+    `;
+    this.gainsToggle.style.display = 'none';
+
+    const chart = Dom.get('videoChart');
+    if (chart && chart.parentElement) {
+      chart.parentElement.insertBefore(this.dropdown, chart);
+      chart.parentElement.insertBefore(this.gainsToggle, chart);
+    }
+
+    const availableModes = this.getAvailableChartModes();
+    this.renderOptions(availableModes);
+    this.renderSelectedLabel();
+    this.ensureModeSupported();
+
+    this.bindEvents();
+    return this.dropdown;
+  },
+
+  getAvailableChartModes() {
+    const isChannelContext = State.currentEntityId === State.currentChannel;
+    const isCommentsMetric = State.getMetricName() === 'comments';
+    const modes = { ...Config.chartModes };
+    if (isChannelContext || isCommentsMetric) {
+      delete modes['7dh'];
+    }
+    return modes;
+  },
+
+  bindEvents() {
+    if (!this.dropdown || !this.gainsToggle) return;
+    const button = this.dropdown.querySelector('#chartModeButton');
+    const options = this.dropdown.querySelector('#chartModeOptions');
+
+    button.addEventListener('click', e => {
+      e.stopPropagation();
+      options.classList.toggle('show');
+      button.querySelector('.chart-mode-arrow').classList.toggle('rotated');
+    });
+
+    document.addEventListener('click', e => {
+      if (!this.dropdown.contains(e.target)) {
+        options.classList.remove('show');
+        button.querySelector('.chart-mode-arrow').classList.remove('rotated');
+      }
+    });
+
+    options.addEventListener('click', e => {
+      const option = e.target.closest('.chart-mode-option');
+      if (!option) return;
+
+      const available = this.getAvailableChartModes();
+      const mode = option.dataset.mode;
+
+      if (!available[mode]) return;
+      if (mode === State.currentChartMode) return;
+
+      this.selectMode(mode);
+      options.classList.remove('show');
+      button.querySelector('.chart-mode-arrow').classList.remove('rotated');
+    });
+
+    this.gainsToggle.addEventListener('click', () => {
+      this.toggleGainsMode();
+    });
+  },
+
+  renderOptions(availableModes) {
+    if (!this.dropdown) return;
+    const optionsEl = this.dropdown.querySelector('#chartModeOptions');
+    if (!optionsEl) return;
+
+    const markup = Object.entries(availableModes)
+      .map(
+        ([key, config]) => `
+        <div class="chart-mode-option" data-mode="${key}">${config.label}</div>
+      `
+      )
+      .join('');
+    optionsEl.innerHTML = markup;
+    this._lastAvailableModes = JSON.stringify(Object.keys(availableModes));
+  },
+
+  renderSelectedLabel() {
+    if (!this.dropdown) return;
+    const txt = this.dropdown.querySelector('.chart-mode-text');
+    const mode = State.currentChartMode;
+    const cfg =
+      Config.chartModes[mode] || Config.chartModes[Config.defaultChartMode];
+    if (txt) txt.textContent = cfg.label;
+  },
+
+  async ensureModeSupported() {
+    const available = this.getAvailableChartModes();
+    if (available[State.currentChartMode]) {
+      this.renderSelectedLabel();
+      this.updateGainsToggleVisibility();
+      return false;
+    }
+
+    let fallback = Config.defaultChartMode;
+    if (!available[fallback]) {
+      const keys = Object.keys(available);
+      fallback = keys.length ? keys[0] : null;
+    }
+
+    if (!fallback) {
+      if (this.dropdown) this.dropdown.style.display = 'none';
+      State.isHourlyMode = false;
+      State.isGainsMode = false;
+      State.isHourlyGainsMode = false;
+      return false;
+    }
+
+    await this.selectMode(fallback);
+    return true;
+  },
+
+  async refresh() {
+    if (!this.dropdown) this.create();
+    if (!this.dropdown) return false;
+    if (this._isRefreshing) return false;
+
+    this._isRefreshing = true;
+
+    const availableNow = this.getAvailableChartModes();
+    const currentSig = JSON.stringify(Object.keys(availableNow));
+    const changed = currentSig !== this._lastAvailableModes;
+
+    if (changed) {
+      this.renderOptions(availableNow);
+    }
+
+    const didChangeMode = await this.ensureModeSupported();
+    this.updateGainsToggleVisibility();
+
+    if (this.dropdown) {
+      this.dropdown.style.display = this.hasRenderableChart()
+        ? 'block'
+        : 'none';
+    }
+
+    this._isRefreshing = false;
+    return didChangeMode;
+  },
+
+  async selectMode(mode) {
+    State.customDateRange = { start: null, end: null };
+    State.customDateRangeLabel = null;
+
+    State.currentChartMode = mode;
+    State.isGainsMode = false;
+    State.isHourlyGainsMode = false;
+    State.isHourlyMode = false;
+    State.hourlyData = null;
+
+    this.renderSelectedLabel();
+
+    this.gainsToggle.classList.remove('active');
+    this.gainsToggle.innerHTML = `
+      <i class="fas fa-chart-line"></i>
+      <span>Daily Gains</span>
+    `;
+
+    this.updateGainsToggleVisibility();
+
+    const config = Config.chartModes[mode];
+    if (config.dataPoints === 'hourly-chart') {
+      await this.loadHourlyChart();
+    } else {
+      await this.loadAndDisplayData();
+    }
+  },
+
+  async loadHourlyChart() {
+    const container = Dom.get('videoChart');
+    if (container) {
+      container.innerHTML =
+        '<div style="text-align:center;padding:20px;">Loading hourly chart data...</div>';
+    }
+
+    try {
+      if (!State.hourlyData) {
+        this.setDefaultDates();
+        const data = await this.fetchHourlyData(
+          State.currentEntityId,
+          State.currentChannel,
+          State.hourlyDateRange.start,
+          State.hourlyDateRange.end
+        );
+        State.hourlyData = data;
+      }
+
+      State.isHourlyMode = true;
+      await Charts.create();
+    } catch (error) {
+      console.error('Error loading hourly chart:', error);
+      State.isHourlyMode = false;
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:20px;color:red;">Error loading hourly chart. This video may not have enough data yet.</div>';
+      }
+    }
+  },
+
+  setDefaultDates() {
+    const end = luxon.DateTime.now().setZone('America/New_York');
+    const start = end.minus({ days: Config.hourly.defaultDays });
+    State.hourlyDateRange.start = start.toISODate();
+    State.hourlyDateRange.end = end.toISODate();
+  },
+
+  async fetchHourlyData(videoId, channel, startDate, endDate) {
+    const url = Config.api.hourly(videoId, channel, startDate, endDate);
+    try {
+      return await Net.fetchJson(url, {}, 10 * 60 * 1000);
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async toggleGainsMode() {
+    const config = State.getChartConfig();
+    const isChannelContext = State.currentEntityId === State.currentChannel;
+    const canShowHourlyGains =
+      !isChannelContext &&
+      config.dataPoints === 'hourly' &&
+      config.period !== 'all' &&
+      config.period <= 60;
+
+    if (!State.isGainsMode && !State.isHourlyGainsMode) {
+      State.isGainsMode = true;
+      State.isHourlyGainsMode = false;
+      this.gainsToggle.classList.add('active');
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-chart-area"></i>
+        <span>Daily Gains</span>
+      `;
+    } else if (State.isGainsMode && canShowHourlyGains) {
+      State.isGainsMode = false;
+      State.isHourlyGainsMode = true;
+      this.gainsToggle.classList.add('active');
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-clock"></i>
+        <span>Hourly Gains</span>
+      `;
+    } else {
+      State.isGainsMode = false;
+      State.isHourlyGainsMode = false;
+      this.gainsToggle.classList.remove('active');
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-chart-line"></i>
+        <span>Daily Gains</span>
+      `;
+    }
+
+    await Charts.create();
+  },
+
+  updateGainsToggleVisibility() {
+    const config = State.getChartConfig();
+    const hasRenderable = this.hasRenderableChart();
+
+    const canShowGains =
+      !State.isRankingsView &&
+      !State.isGainsView &&
+      !State.isVideosGridView &&
+      config.dataPoints !== 'hourly-chart' &&
+      hasRenderable;
+
+    if (canShowGains) {
+      this.gainsToggle.style.display = 'flex';
+    } else {
+      this.gainsToggle.style.display = 'none';
+      State.isGainsMode = false;
+      State.isHourlyGainsMode = false;
+      this.gainsToggle.classList.remove('active');
+      this.gainsToggle.innerHTML = `
+	      <i class="fas fa-chart-line"></i>
+	      <span>Daily Gains</span>
+	    `;
+    }
+
+    const shouldShowDatePicker =
+      !State.isRankingsView &&
+      !State.isGainsView &&
+      !State.isVideosGridView &&
+      hasRenderable;
+
+    if (shouldShowDatePicker) {
+      if (!CustomDatePicker.datePickerButton) {
+        CustomDatePicker.createDatePickerButton();
+      }
+      if (CustomDatePicker.datePickerButton) {
+        CustomDatePicker.datePickerButton.classList.add('show');
+        CustomDatePicker.datePickerButton.style.display = 'flex';
+      }
+    } else {
+      if (CustomDatePicker.datePickerButton) {
+        CustomDatePicker.datePickerButton.classList.remove('show');
+        CustomDatePicker.datePickerButton.style.display = 'none';
+      }
+    }
+  },
+
+  async loadAndDisplayData() {
+    const container = Dom.get('videoChart');
+    if (container) {
+      container.innerHTML =
+        '<div style="text-align:center;padding:20px;">Loading chart data...</div>';
+    }
+
+    try {
+      const config = State.getChartConfig();
+      const filterByDateRange = (arr, startISO, endISO) => {
+        const startDate = luxon.DateTime.fromISO(startISO, {
+          zone: 'America/New_York',
+        }).startOf('day');
+        const endDate = luxon.DateTime.fromISO(endISO, {
+          zone: 'America/New_York',
+        }).endOf('day');
+        return arr.filter(entry => {
+          const entryTime = entry.timestamp || entry.time;
+          if (!entryTime) return false;
+          const entryDate = luxon.DateTime.fromISO(entryTime, {
+            zone: 'America/New_York',
+          });
+          return entryDate >= startDate && entryDate <= endDate;
+        });
+      };
+
+      const haveCustom =
+        State.customDateRange.start && State.customDateRange.end;
+      const useTimestamp = !!State.rawData?.[0]?.timestamp;
+
+      if (haveCustom) {
+        if (config.dataPoints === 'hourly') {
+          const filtered = filterByDateRange(
+            Array.isArray(State.rawData) ? State.rawData : [],
+            State.customDateRange.start,
+            State.customDateRange.end
+          );
+          if (filtered.length === 0)
+            throw new Error('No data available for the selected date range');
+          State.processedData = DataProcessor.transform(filtered);
+        } else {
+          const baseDaily =
+            Array.isArray(State._dailyCache) && State._dailyCache.length
+              ? State._dailyCache
+              : DataProcessor.processDaily(State.rawData, useTimestamp);
+          const filteredDaily = filterByDateRange(
+            baseDaily,
+            State.customDateRange.start,
+            State.customDateRange.end
+          );
+          if (filteredDaily.length === 0)
+            throw new Error('No data available for the selected date range');
+          State.processedData = DataProcessor.transform(filteredDaily);
+        }
+      } else if (
+        config.period !== 'all' &&
+        typeof config.period === 'number' &&
+        Array.isArray(State.rawData)
+      ) {
+        const cutoffDate = luxon.DateTime.now()
+          .setZone('America/New_York')
+          .startOf('day')
+          .minus({ days: config.period });
+
+        if (config.dataPoints === 'hourly') {
+          const recent = State.rawData.filter(entry => {
+            const iso = entry.timestamp || entry.time;
+            if (!iso) return false;
+            const dt = luxon.DateTime.fromISO(iso, {
+              zone: 'America/New_York',
+            });
+            return dt >= cutoffDate;
+          });
+          State.processedData = DataProcessor.transform(recent);
+        } else {
+          const baseDaily =
+            Array.isArray(State._dailyCache) && State._dailyCache.length
+              ? State._dailyCache
+              : DataProcessor.processDaily(State.rawData, useTimestamp);
+          const recentDaily = baseDaily.filter(entry => {
+            const iso = entry.timestamp || entry.time;
+            const dt = luxon.DateTime.fromISO(iso, {
+              zone: 'America/New_York',
+            });
+            return dt >= cutoffDate;
+          });
+          State.processedData = DataProcessor.transform(recentDaily);
+        }
+      } else {
+        if (config.dataPoints === 'hourly') {
+          State.processedData = DataProcessor.transform(State.rawData);
+        } else {
+          const baseDaily =
+            Array.isArray(State._dailyCache) && State._dailyCache.length
+              ? State._dailyCache
+              : DataProcessor.processDaily(State.rawData, useTimestamp);
+          State.processedData = DataProcessor.transform(baseDaily);
+        }
+      }
+
+      await Charts.create();
+    } catch (error) {
+      console.error('Error loading chart data:', error);
+      if (container) {
+        container.innerHTML = `<div style="text-align:center;padding:20px;color:red;">Error loading chart data: ${error.message}</div>`;
+      }
+    }
+  },
+
+  show() {
+    if (State.isRankingsView || State.isGainsView || State.isVideosGridView) {
+      this.hide();
+      return;
+    }
+    if (!this.dropdown) this.create();
+    if (this.dropdown) this.dropdown.style.display = 'block';
+    this.refresh();
+    this.updateGainsToggleVisibility();
+  },
+
+  hide() {
+    if (this.dropdown) this.dropdown.style.display = 'none';
+    if (this.gainsToggle) this.gainsToggle.style.display = 'none';
+  },
+
+  reset() {
+    State.currentChartMode = Config.defaultChartMode;
+    State.isGainsMode = false;
+    State.isHourlyGainsMode = false;
+    State.isHourlyMode = false;
+    State.hourlyData = null;
+    State.hourlyDateRange = { start: null, end: null };
+    State.customDateRange = { start: null, end: null };
+    State.customDateRangeLabel = null;
+    this._lastAvailableModes = null;
+
+    const availableModes = this.getAvailableChartModes();
+    if (!availableModes[State.currentChartMode]) {
+      State.currentChartMode = Config.defaultChartMode;
+    }
+    if (this.dropdown) {
+      this.renderSelectedLabel();
+    }
+    if (this.gainsToggle) {
+      this.gainsToggle.classList.remove('active');
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-chart-line"></i>
+        <span>Daily Gains</span>
+      `;
+    }
+    CustomDatePicker.reset();
+    this.refresh();
+    if (this.dropdown) {
+      this.dropdown.style.display = this.hasRenderableChart()
+        ? 'block'
+        : 'none';
+    }
+  },
+};
+
+const CustomDatePicker = {
+  datePickerButton: null,
+  modal: null,
+  startDateInput: null,
+  endDateInput: null,
+  currentMode: null,
+
+  createDatePickerButton() {
+    if (this.datePickerButton) return this.datePickerButton;
+
+    const chartContainer = document.querySelector('.chart-container');
+    if (!chartContainer) return null;
+
+    this.datePickerButton = Dom.create('button', 'custom-date-picker-button');
+    this.datePickerButton.innerHTML = '<i class="fas fa-calendar-alt"></i>';
+    this.datePickerButton.title = 'Select custom date range';
+
+    this.datePickerButton.addEventListener('click', () => {
+      this.openModal();
+    });
+
+    const chart = Dom.get('videoChart');
+    if (chart && chart.parentElement) {
+      chart.parentElement.insertBefore(this.datePickerButton, chart);
+    }
+    return this.datePickerButton;
+  },
+
+  createModal() {
+    if (this.modal) return this.modal;
+
+    this.modal = Dom.create('div', 'date-picker-modal');
+    this.modal.innerHTML = `
+      <div class="date-picker-content">
+        <div class="date-picker-header">
+          <h3 id="modalTitle">Select Date Range</h3>
+        </div>
+        <div class="date-picker-body">
+          <div class="date-input-group">
+            <label for="modalStartDate">Start Date</label>
+            <input type="date" id="modalStartDate" />
+          </div>
+          <div class="date-input-group">
+            <label for="modalEndDate">End Date</label>
+            <input type="date" id="modalEndDate" />
+          </div>
+        </div>
+        <div class="date-picker-actions">
+          <button class="date-picker-button secondary" id="cancelDatePicker">Cancel</button>
+          <button class="date-picker-button primary" id="applyDatePicker">Apply</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(this.modal);
+
+    this.startDateInput = document.getElementById('modalStartDate');
+    this.endDateInput = document.getElementById('modalEndDate');
+
+    this.modal.addEventListener('click', e => {
+      if (e.target === this.modal) this.closeModal();
+    });
+
+    const cancelBtn = document.getElementById('cancelDatePicker');
+    cancelBtn.addEventListener('click', () => this.closeModal());
+
+    const applyBtn = document.getElementById('applyDatePicker');
+    applyBtn.addEventListener('click', () => this.applyDateRange());
+
+    return this.modal;
+  },
+
+  openModal(mode = null) {
+    if (!mode) {
+      const config = State.getChartConfig();
+      mode = config.dataPoints === 'hourly-chart' ? 'hourly' : 'regular';
+    }
+    this.currentMode = mode;
+
+    if (!this.modal) this.createModal();
+
+    if (this.startDateInput && this.endDateInput) {
+      const now = luxon.DateTime.now().setZone('America/New_York');
+      let start;
+      if (mode === 'hourly') {
+        if (State.currentChartMode === '7dh' && !State.hourlyDateRange.start) {
+          start = now.minus({ days: 7 }).startOf('day');
+        } else if (State.hourlyDateRange.start) {
+          start = luxon.DateTime.fromISO(State.hourlyDateRange.start, {
+            zone: 'America/New_York',
+          });
+        } else {
+          start = now.minus({ days: Config.hourly.defaultDays }).startOf('day');
+        }
+        this.startDateInput.value =
+          State.hourlyDateRange.start || start.toISODate();
+        this.endDateInput.value = State.hourlyDateRange.end || now.toISODate();
+      } else {
+        if (State.customDateRange.start) {
+          start = luxon.DateTime.fromISO(State.customDateRange.start, {
+            zone: 'America/New_York',
+          });
+        } else {
+          start = now.minus({ days: 30 }).startOf('day');
+        }
+        this.startDateInput.value =
+          State.customDateRange.start || start.toISODate();
+        this.endDateInput.value = State.customDateRange.end || now.toISODate();
+      }
+      this.endDateInput.max = now.toISODate();
+
+      const title = this.modal.querySelector('#modalTitle');
+      if (title) {
+        title.textContent =
+          mode === 'hourly'
+            ? 'Select Hourly Chart Date Range'
+            : 'Select Custom Date Range';
+      }
+    }
+    this.modal.classList.add('show');
+  },
+
+  closeModal() {
+    if (this.modal) this.modal.classList.remove('show');
+  },
+
+  async applyDateRange() {
+    if (!this.startDateInput || !this.endDateInput) return;
+    const startDate = this.startDateInput.value;
+    const endDate = this.endDateInput.value;
+
+    if (!startDate || !endDate) {
+      alert('Please select both start and end dates');
+      return;
+    }
+    if (startDate > endDate) {
+      alert('Start date must be before end date');
+      return;
+    }
+    this.closeModal();
+
+    try {
+      const container = Dom.get('videoChart');
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:20px;">Loading custom date range...</div>';
+      }
+
+      if (this.currentMode === 'hourly') {
+        State.hourlyDateRange.start = startDate;
+        State.hourlyDateRange.end = endDate;
+
+        const data = await ChartModeDropdown.fetchHourlyData(
+          State.currentEntityId,
+          State.currentChannel,
+          startDate,
+          endDate
+        );
+        State.hourlyData = data;
+        State.isHourlyMode = true;
+
+        const start = luxon.DateTime.fromISO(startDate, {
+          zone: 'America/New_York',
+        });
+        const end = luxon.DateTime.fromISO(endDate, {
+          zone: 'America/New_York',
+        });
+        State.customDateRangeLabel = `${start.toFormat(
+          'MM/dd'
+        )} - ${end.toFormat('MM/dd')}`;
+      } else {
+        State.customDateRange.start = startDate;
+        State.customDateRange.end = endDate;
+
+        const start = luxon.DateTime.fromISO(startDate, {
+          zone: 'America/New_York',
+        });
+        const end = luxon.DateTime.fromISO(endDate, {
+          zone: 'America/New_York',
+        });
+        State.customDateRangeLabel = `${start.toFormat(
+          'MM/dd'
+        )} - ${end.toFormat('MM/dd')}`;
+        await this.loadCustomRangeData();
+      }
+      await Charts.create();
+    } catch (error) {
+      console.error('Failed to load custom date range:', error);
+      const container = Dom.get('videoChart');
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:20px;color:red;">Error loading custom date range. Please try again.</div>';
+      }
+      if (this.currentMode === 'hourly') {
+        State.isHourlyMode = false;
+        State.hourlyData = null;
+        State.hourlyDateRange = { start: null, end: null };
+      } else {
+        State.customDateRange = { start: null, end: null };
+      }
+      State.customDateRangeLabel = null;
+    }
+  },
+
+  async loadCustomRangeData() {
+    const startDate = luxon.DateTime.fromISO(State.customDateRange.start, {
+      zone: 'America/New_York',
+    }).startOf('day');
+    const endDate = luxon.DateTime.fromISO(State.customDateRange.end, {
+      zone: 'America/New_York',
+    }).endOf('day');
+
+    let filteredData = State.rawData;
+    if (Array.isArray(filteredData)) {
+      filteredData = filteredData.filter(entry => {
+        const entryTime = entry.timestamp || entry.time;
+        if (!entryTime) return false;
+        const entryDate = luxon.DateTime.fromISO(entryTime, {
+          zone: 'America/New_York',
+        });
+        return entryDate >= startDate && entryDate <= endDate;
+      });
+
+      if (filteredData.length === 0) {
+        throw new Error('No data available for the selected date range');
+      }
+
+      const daysDiff = Math.ceil(endDate.diff(startDate, 'days').days);
+      if (daysDiff <= 60) {
+        State.processedData = DataProcessor.transform(filteredData);
+      } else {
+        const dailyData = DataProcessor.processDaily(
+          filteredData,
+          !!filteredData[0]?.timestamp
+        );
+        State.processedData = DataProcessor.transform(dailyData);
+      }
+    } else {
+      throw new Error('Invalid data format');
+    }
+  },
+
+  show() {
+    if (!this.datePickerButton) this.createDatePickerButton();
+  },
+
+  hide() {
+    if (this.datePickerButton) this.datePickerButton.classList.remove('show');
+  },
+
+  reset() {
+    State.hourlyDateRange = { start: null, end: null };
+    State.customDateRange = { start: null, end: null };
+    State.customDateRangeLabel = null;
+    if (this.datePickerButton) this.datePickerButton.classList.remove('show');
+  },
+};
+
+const Loader = {
+  _loadPromises: new Map(),
+  _loadedKey: null,
+
+  async setupProfile(profileUrl) {
+    let headerLeft = document.querySelector('.header-left');
+    if (!headerLeft) {
+      headerLeft = Dom.create('div', 'header-left');
+      const header = document.querySelector('header');
+      const h1 = header?.querySelector('h1');
+      if (header && h1) {
+        header.insertBefore(headerLeft, h1);
+        headerLeft.appendChild(h1);
+      }
+    }
+    if (headerLeft && profileUrl) {
+      Dom.removeImg();
+      const profileImg = Dom.createImg(profileUrl);
+      headerLeft.insertBefore(profileImg, headerLeft.firstChild);
+    }
+  },
+
+  setupChannelHeader(channelId) {
+    const ch =
+      Config.channels.find(c => c.id === channelId) || Config.channels[0];
+    const header = Dom.get('channelHeader');
+    const avatar = Dom.get('channelAvatar');
+    const name = Dom.get('channelName');
+
+    if (avatar) avatar.src = ch.avatar;
+    if (name) name.textContent = ch.name;
+    if (header) header.style.display = 'flex';
+
+    ChannelsBar.highlight(channelId);
+    ChannelTabs.render();
+    ChannelTabs.setActive(State.currentTab || 'combined');
+  },
+
+  updateVideoInfo(video) {
+    const elements = {
+      thumbnail: Dom.get('videoThumbnail'),
+      videoLink: Dom.get('videoLink'),
+      uploadDate: Dom.get('uploadDate'),
+      duration: Dom.get('videoDuration'),
+    };
+
+    if (elements.thumbnail && video.thumbnail) {
+      elements.thumbnail.src = video.thumbnail;
+      elements.thumbnail.loading = 'eager';
+    }
+
+    if (elements.videoLink && video.videoId && video.title) {
+      elements.videoLink.href = `https://www.youtube.com/watch?v=${video.videoId}`;
+      elements.videoLink.textContent = video.title;
+
+      const input = Dom.get('searchInput');
+      if (input) input.value = video.title;
+    }
+
+    if (elements.uploadDate && video.uploadTime) {
+      const uploadDate = luxon.DateTime.fromISO(video.uploadTime).setZone(
+        'America/New_York'
+      );
+      elements.uploadDate.innerHTML = `Uploaded: ${uploadDate.toFormat(
+        'M/d/yyyy'
+      )} at ${uploadDate.toFormat('h:mm:ss a')} EST`;
+
+      if (video.lastUpdated) {
+        const lastUpdated = luxon.DateTime.fromISO(video.lastUpdated).setZone(
+          'America/New_York'
+        );
+        const span = Dom.create('span', 'last-updated');
+        span.textContent = ` (Stats last updated: ${lastUpdated.toFormat(
+          'M/d/yyyy'
+        )} at ${lastUpdated.toFormat('h:mm:ss a')} EST)`;
+        elements.uploadDate.appendChild(span);
+      }
+    }
+
+    if (elements.duration && video.duration) {
+      elements.duration.innerHTML = `Duration: ${video.duration}`;
+      const videoIdSpan = Dom.create('span', 'video-id');
+      videoIdSpan.textContent = ` (Video ID: ${video.videoId})`;
+      elements.duration.appendChild(videoIdSpan);
+    }
+
+    Dom.show('videoInfoCard');
+  },
+
+  async loadChannelCombined(channelId, profileUrl, isNavigation = false) {
+    const key = `channel-combined:${channelId}`;
+    if (this._loadPromises.has(key)) return this._loadPromises.get(key);
+    const p = (async () => {
+      if (State.isVideosGridView) {
+        ScrollState.save('videos', State.currentChannel);
+      }
+
+      State.reset();
+      ChartModeDropdown.reset();
+      State.currentEntityId = channelId;
+      State.currentChannel = channelId;
+      State.isRankingsView = false;
+      State.isGainsView = false;
+      State.isListingView = false;
+      State.isVideosGridView = false;
+
+      if (!isNavigation) window.scrollTo(0, 0);
+
+      const headerTitle = document.querySelector('header h1');
+      if (headerTitle) headerTitle.textContent = 'Channel Analytics';
+
+      await this.setupProfile(profileUrl);
+      this.setupChannelHeader(channelId);
+
+      Dom.updateUrl('combined', channelId, isNavigation);
+      Dom.setMainView('combined');
+
+      const exportControls = document.querySelector('.export-controls');
+      if (exportControls) exportControls.style.display = 'flex';
+
+      Dom.hide('videoInfoCard');
+
+      const container = Dom.get('videoChart');
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:40px;">Loading channel data...</div>';
+      }
+
+      const uploadCard = Dom.get('uploadCountCard');
+      if (uploadCard) uploadCard.style.display = 'flex';
+      const grid = document.querySelector('.stats-grid');
+      if (grid) grid.classList.remove('three-columns');
+
+      try {
+        const endpoint =
+          channelId === 'mrbeast'
+            ? Config.api.combinedHistory.mrbeast
+            : Config.api.combinedHistory.byChannel(channelId);
+
+        const combinedData = await Net.fetchJson(endpoint, {}, 10 * 60 * 1000);
+        if (Array.isArray(combinedData)) {
+          State.rawData = combinedData;
+          State._dailyCache = DataProcessor.processDaily(combinedData);
+          await ChartModeDropdown.loadAndDisplayData();
+          Stats.update();
+
+          const dailyData = State._dailyCache || [];
+          const currentData = combinedData[combinedData.length - 1];
+          Tables.create(dailyData, currentData);
+
+          ChartModeDropdown.show();
+
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(() => {
+              Rankings.prefetch(State.currentChannel);
+              Gains.prefetch(State.currentChannel);
+              Listing.prefetch(State.currentChannel);
+            });
+          } else {
+            setTimeout(() => {
+              Rankings.prefetch(State.currentChannel);
+              Gains.prefetch(State.currentChannel);
+              Listing.prefetch(State.currentChannel);
+            }, 150);
+          }
+        } else {
+          throw new Error('Invalid data format received');
+        }
+      } catch (error) {
+        const chart = Dom.get('videoChart');
+        if (chart) {
+          chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load data: ${error.message}<br>Please try again.</div>`;
+        }
+      }
+      this._loadedKey = key;
+    })();
+
+    this._loadPromises.set(key, p);
+    try {
+      await p;
+    } finally {
+      this._loadPromises.delete(key);
+    }
+    return p;
+  },
+
+  async loadChannelVideos(channelId, profileUrl, isNavigation = false) {
+    const key = `channel-videos:${channelId}`;
+    if (this._loadPromises.has(key)) return this._loadPromises.get(key);
+
+    const p = (async () => {
+      const switchingChannels =
+        State.currentChannel && State.currentChannel !== channelId;
+
+      if (State.isVideosGridView) {
+        ScrollState.save('videos', State.currentChannel);
+      }
+
+      State.reset();
+      ChartModeDropdown.reset();
+      ChartModeDropdown.hide();
+
+      State.currentEntityId = channelId;
+      State.currentChannel = channelId;
+      State.isVideosGridView = true;
+
+      if (switchingChannels) {
+        ScrollState.clear('videos', channelId);
+      }
+
+      if (switchingChannels || !isNavigation) {
+        window.scrollTo(0, 0);
+      }
+
+      await this.setupProfile(profileUrl);
+      this.setupChannelHeader(channelId);
+
+      Dom.updateUrl('videos', channelId, isNavigation);
+      Dom.setMainView('videos');
+
+      const exportControls = document.querySelector('.export-controls');
+      if (exportControls) exportControls.style.display = 'none';
+
+      ChannelVideos.bindControls();
+      await ChannelVideos.load(channelId);
+
+      if (!switchingChannels && ScrollState.has('videos', channelId)) {
+        const savedY = ScrollState.positions.get(`videos:${channelId}`) || 0;
+        const estimatedRowHeight = 280;
+        const columnsPerRow =
+          window.innerWidth > 1024
+            ? 4
+            : window.innerWidth > 768
+            ? 3
+            : window.innerWidth > 480
+            ? 2
+            : 1;
+
+        const neededRows = Math.ceil(savedY / estimatedRowHeight);
+        const itemsToRender = Math.min(
+          (neededRows + 2) * columnsPerRow,
+          ChannelVideos.filteredItems.length
+        );
+
+        if (itemsToRender > ChannelVideos.visibleCount) {
+          const prevCount = ChannelVideos.visibleCount;
+          ChannelVideos.visibleCount = itemsToRender;
+          ChannelVideos.renderVisible(prevCount);
+        }
+
+        ScrollState.restore('videos', channelId);
+      }
+
+      ChannelVideos.bindInfiniteScroll();
+
+      this._loadedKey = key;
+    })();
+
+    this._loadPromises.set(key, p);
+    try {
+      await p;
+    } finally {
+      this._loadPromises.delete(key);
+    }
+    return p;
+  },
+
+  async loadChannelRankings(channelId, profileUrl, isNavigation = false) {
+    const key = `channel-rank:${channelId}`;
+    if (this._loadPromises.has(key)) return this._loadPromises.get(key);
+    const p = (async () => {
+      if (State.isVideosGridView) {
+        ScrollState.save('videos', State.currentChannel);
+      }
+
+      State.reset();
+      ChartModeDropdown.reset();
+      ChartModeDropdown.hide();
+
+      State.currentEntityId = channelId;
+      State.currentChannel = channelId;
+      State.isRankingsView = true;
+
+      if (!isNavigation) window.scrollTo(0, 0);
+
+      const headerTitle = document.querySelector('header h1');
+      if (headerTitle) headerTitle.textContent = 'Video Rankings';
+
+      await this.setupProfile(profileUrl);
+      this.setupChannelHeader(channelId);
+
+      Dom.updateUrl('rankings', channelId, isNavigation);
+      Dom.setMainView('rankings');
+
+      const exportControls = document.querySelector('.export-controls');
+      if (exportControls) exportControls.style.display = 'none';
+
+      Rankings.applySettings();
+      const list = Dom.get('rankingsList');
+      if (list) {
+        list.innerHTML =
+          '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading rankings...</div>';
+      }
+
+      try {
+        const rankings = await Rankings.fetch(
+          channelId,
+          State.rankingsSettings.filter
+        );
+        if (rankings.length > 0) {
+          const saved = SessionSettings.getRankingsSettings();
+          if (!saved) {
+            const defaults = Rankings.getDefaults(rankings);
+            State.rankingsSettings.videoCount = defaults.videoCount;
+            State.rankingsSettings.timePeriod = defaults.timePeriod;
+            Rankings.applySettings();
+          }
+          Rankings.display(rankings);
+        } else {
+          if (list) {
+            list.innerHTML =
+              '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No ranking data available for this channel.</div>';
+          }
+        }
+      } catch (error) {
+        if (list) {
+          list.innerHTML =
+            '<div style="text-align:center;padding:20px;color:red;">Error loading rankings. Please try again.</div>';
+        }
+      }
+      this._loadedKey = key;
+    })();
+
+    this._loadPromises.set(key, p);
+    try {
+      await p;
+    } finally {
+      this._loadPromises.delete(key);
+    }
+    return p;
+  },
+
+  async loadChannelGains(channelId, profileUrl, isNavigation = false) {
+    const key = `channel-gains:${channelId}`;
+    if (this._loadPromises.has(key)) return this._loadPromises.get(key);
+    const p = (async () => {
+      if (State.isVideosGridView) {
+        ScrollState.save('videos', State.currentChannel);
+      }
+
+      State.reset();
+      ChartModeDropdown.reset();
+      ChartModeDropdown.hide();
+
+      State.currentEntityId = channelId;
+      State.currentChannel = channelId;
+      State.isGainsView = true;
+
+      if (!isNavigation) window.scrollTo(0, 0);
+
+      const headerTitle = document.querySelector('header h1');
+      if (headerTitle) headerTitle.textContent = 'Video Gains';
+
+      await this.setupProfile(profileUrl);
+      this.setupChannelHeader(channelId);
+
+      Dom.updateUrl('gains', channelId, isNavigation);
+      Dom.setMainView('gains');
+
+      const exportControls = document.querySelector('.export-controls');
+      if (exportControls) exportControls.style.display = 'none';
+
+      Gains.applySettings();
+      const list = Dom.get('gainsList');
+      if (list) {
+        list.innerHTML =
+          '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">Loading gains...</div>';
+      }
+
+      try {
+        const gains = await Gains.fetch(
+          channelId,
+          State.gainsSettings.metric,
+          State.gainsSettings.filter,
+          State.gainsSettings.period,
+          State.gainsSettings.sortMode
+        );
+        if (State.isGainsView) {
+          Gains.display(gains, State.gainsSettings.count);
+        }
+      } catch (error) {
+        if (list) {
+          list.innerHTML =
+            '<div style="text-align:center;padding:20px;color:red;">Error loading gains. Please try again.</div>';
+        }
+      }
+      this._loadedKey = key;
+    })();
+
+    this._loadPromises.set(key, p);
+    try {
+      await p;
+    } finally {
+      this._loadPromises.delete(key);
+    }
+    return p;
+  },
+
+  async loadChannelListing(channelId, profileUrl, isNavigation = false) {
+    const key = `channel-list:${channelId}`;
+    if (this._loadPromises.has(key)) return this._loadPromises.get(key);
+
+    const p = (async () => {
+      if (State.isVideosGridView) {
+        ScrollState.save('videos', State.currentChannel);
+      }
+
+      State.reset();
+      ChartModeDropdown.reset();
+      ChartModeDropdown.hide();
+
+      State.currentEntityId = channelId;
+      State.currentChannel = channelId;
+      State.isListingView = true;
+
+      if (!isNavigation) window.scrollTo(0, 0);
+
+      const headerTitle = document.querySelector('header h1');
+      if (headerTitle) headerTitle.textContent = 'Video List';
+
+      await this.setupProfile(profileUrl);
+      this.setupChannelHeader(channelId);
+
+      Dom.updateUrl('list', channelId, isNavigation);
+      Dom.setMainView('listing');
+
+      const exportControls = document.querySelector('.export-controls');
+      if (exportControls) exportControls.style.display = 'none';
+
+      Listing.applySettings();
+      await Listing.refresh();
+    })();
+
+    this._loadPromises.set(key, p);
+    try {
+      await p;
+    } finally {
+      this._loadPromises.delete(key);
+    }
+    return p;
+  },
+
+  async loadVideo(videoId, channelId = 'mrbeast', isNavigation = false) {
+    const key = `video:${videoId}|${channelId}`;
+    if (this._loadPromises.has(key)) return this._loadPromises.get(key);
+    if (this._loadedKey === key && !isNavigation) return;
+
+    const p = (async () => {
+      if (State.isVideosGridView) {
+        ScrollState.save('videos', State.currentChannel);
+      }
+
+      State.reset();
+      ChartModeDropdown.reset();
+
+      State.currentEntityId = videoId;
+      State.currentChannel = channelId;
+      State.isRankingsView = false;
+      State.isGainsView = false;
+      State.isListingView = false;
+      State.isVideosGridView = false;
+
+      State.currentTab = 'videos';
+
+      if (!isNavigation) window.scrollTo(0, 0);
+
+      Dom.setMainView('video');
+
+      const exportControls = document.querySelector('.export-controls');
+      if (exportControls) exportControls.style.display = 'flex';
+
+      const container = Dom.get('videoChart');
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:40px;">Loading video data...</div>';
+      }
+
+      const uploadCard = Dom.get('uploadCountCard');
+      if (uploadCard) uploadCard.style.display = 'none';
+
+      const grid = document.querySelector('.stats-grid');
+      if (grid) grid.classList.add('three-columns');
+
+      const headerTitle = document.querySelector('header h1');
+      if (headerTitle) headerTitle.textContent = 'Video Analytics';
+
+      if (State.selectedMetricIndex === 3) {
+        State.selectedMetricIndex = 0;
+        document.querySelectorAll('.stat-card').forEach((card, index) => {
+          card.classList.toggle('active', index === 0);
+        });
+      }
+
+      Dom.removeImg();
+      const ch =
+        Config.channels.find(c => c.id === channelId) || Config.channels[0];
+      await this.setupProfile(ch.avatar);
+
+      if (!isNavigation) {
+        if (channelId !== 'mrbeast') Dom.updateUrl(videoId, channelId);
+        else Dom.updateUrl(videoId);
+      }
+
+      try {
+        let endpoint = Config.api.videoStats.byChannel(channelId, videoId);
+        let video = null;
+        try {
+          video = await Net.fetchJson(endpoint, {}, 10 * 60 * 1000);
+        } catch (e) {
+          endpoint = Config.api.videoStats.base + videoId;
+          video = await Net.fetchJson(endpoint, {}, 10 * 60 * 1000);
+        }
+
+        if (video?.stats && Array.isArray(video.stats)) {
+          State.videoUploadTime = video.uploadTime || null;
+
+          this.updateVideoInfo(video);
+
+          const filtered = video.stats.filter(
+            stat => stat.views != null && stat.likes != null
+          );
+
+          State.rawData = filtered;
+          State._dailyCache = DataProcessor.processDaily(filtered, true);
+
+          await ChartModeDropdown.loadAndDisplayData();
+          Stats.update();
+
+          const dailyData = State._dailyCache || [];
+          const currentData = filtered[filtered.length - 1];
+          Tables.create(dailyData, currentData, true);
+
+          Dom.show('videoInfoCard');
+          ChartModeDropdown.show();
+
+          const prefetchAll = () => {
+            try {
+              Rankings.prefetch(State.currentChannel);
+              Gains.prefetch(State.currentChannel);
+              Listing.prefetch(State.currentChannel);
+            } catch {}
+          };
+
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(prefetchAll);
+          } else {
+            setTimeout(prefetchAll, 150);
+          }
+
+          const canPrefetch7dh =
+            State.currentEntityId !== State.currentChannel &&
+            State.getMetricName() !== 'comments' &&
+            !State.hourlyData;
+
+          if (canPrefetch7dh) {
+            const endDt = luxon.DateTime.now().setZone('America/New_York');
+            const startDt = endDt.minus({ days: Config.hourly.defaultDays });
+            const startISO = startDt.toISODate();
+            const endISO = endDt.toISODate();
+
+            const doPrefetch = async () => {
+              try {
+                State.hourlyData = await ChartModeDropdown.fetchHourlyData(
+                  State.currentEntityId,
+                  State.currentChannel,
+                  startISO,
+                  endISO
+                );
+              } catch {}
+            };
+
+            if ('requestIdleCallback' in window) {
+              requestIdleCallback(doPrefetch);
+            } else {
+              setTimeout(doPrefetch, 200);
+            }
+          }
+        } else {
+          throw new Error('Invalid video data format');
+        }
+      } catch (error) {
+        const chart = Dom.get('videoChart');
+        if (chart) {
+          chart.innerHTML = `<div style='text-align:center;padding:20px;color:red;'>Failed to load video data: ${error.message}<br>Please try again.</div>`;
+        }
+      }
+
+      this.setupChannelHeader(channelId);
+
+      this._loadedKey = key;
+    })();
+
+    this._loadPromises.set(key, p);
+    try {
+      await p;
+    } finally {
+      this._loadPromises.delete(key);
+    }
+
+    return p;
+  },
+};
+
+const Router = {
+  parse() {
+    const params = new URLSearchParams(window.location.search);
+    const data = params.get('data');
+    const channelParam = params.get('channel');
+    const tab = params.get('tab');
+
+    const normTab =
+      tab === 'list' ? 'listing' : tab === 'videos' ? 'videos' : tab;
+
+    return { data, channel: channelParam, tab: normTab };
+  },
+
+  getChannelInfo(channelId) {
+    return Config.channels.find(c => c.id === channelId) || Config.channels[0];
+  },
+
+  async goChannelTab(channelId, tabId) {
+    State.currentTab = tabId || 'combined';
+
+    const ch = this.getChannelInfo(channelId);
+    ChannelsBar.highlight(ch.id);
+
+    ChannelTabs.render();
+    ChannelTabs.setActive(State.currentTab);
+
+    if (State.currentTab === 'videos') {
+      await Loader.loadChannelVideos(ch.id, ch.avatar, false);
+    } else if (State.currentTab === 'rankings') {
+      await Loader.loadChannelRankings(ch.id, ch.avatar, false);
+    } else if (State.currentTab === 'gains') {
+      await Loader.loadChannelGains(ch.id, ch.avatar, false);
+    } else if (State.currentTab === 'listing') {
+      await Loader.loadChannelListing(ch.id, ch.avatar, false);
+    } else {
+      await Loader.loadChannelCombined(ch.id, ch.avatar, false);
+      ChannelTabs.setActive('combined');
+      State.currentTab = 'combined';
+    }
+  },
+
+  async goVideo(videoId, channelId) {
+    State.currentTab = 'videos';
+
+    const ch = this.getChannelInfo(channelId || 'mrbeast');
+    ChannelsBar.highlight(ch.id);
+    ChannelTabs.render();
+    ChannelTabs.setActive('videos');
+
+    await Loader.loadVideo(videoId, ch.id, false);
+  },
+
+  async handlePop() {
+    await this.routeFromUrl(true);
+  },
+
+  async routeFromUrl(isNavigation = false) {
+    const { data, channel, tab } = this.parse();
+    const ch = this.getChannelInfo(channel || 'mrbeast');
+
+    const isTabKey = key => {
+      if (!key) return false;
+      const k = String(key).toLowerCase();
+      return (
+        k === 'combined' ||
+        k === 'videos' ||
+        k === 'rankings' ||
+        k === 'gains' ||
+        k === 'listing' ||
+        k === 'list'
+      );
+    };
+
+    if (isTabKey(tab)) {
+      const t = tab.toLowerCase() === 'list' ? 'listing' : tab.toLowerCase();
+      State.currentTab = t;
+
+      if (t === 'videos') {
+        await Loader.loadChannelVideos(ch.id, ch.avatar, isNavigation);
+        ChannelTabs.setActive('videos');
+        return;
+      }
+      if (t === 'rankings') {
+        await Loader.loadChannelRankings(ch.id, ch.avatar, isNavigation);
+        ChannelTabs.setActive('rankings');
+        return;
+      }
+      if (t === 'gains') {
+        await Loader.loadChannelGains(ch.id, ch.avatar, isNavigation);
+        ChannelTabs.setActive('gains');
+        return;
+      }
+      if (t === 'listing') {
+        await Loader.loadChannelListing(ch.id, ch.avatar, isNavigation);
+        ChannelTabs.setActive('listing');
+        return;
+      }
+
+      await Loader.loadChannelCombined(ch.id, ch.avatar, isNavigation);
+      ChannelTabs.setActive('combined');
+      return;
+    }
+
+    if (isTabKey(data)) {
+      const t = data.toLowerCase() === 'list' ? 'listing' : data.toLowerCase();
+      State.currentTab = t;
+
+      if (t === 'videos') {
+        await Loader.loadChannelVideos(ch.id, ch.avatar, isNavigation);
+        ChannelTabs.setActive('videos');
+        return;
+      }
+      if (t === 'rankings') {
+        await Loader.loadChannelRankings(ch.id, ch.avatar, isNavigation);
+        ChannelTabs.setActive('rankings');
+        return;
+      }
+      if (t === 'gains') {
+        await Loader.loadChannelGains(ch.id, ch.avatar, isNavigation);
+        ChannelTabs.setActive('gains');
+        return;
+      }
+      if (t === 'listing') {
+        await Loader.loadChannelListing(ch.id, ch.avatar, isNavigation);
+        ChannelTabs.setActive('listing');
+        return;
+      }
+
+      await Loader.loadChannelCombined(ch.id, ch.avatar, isNavigation);
+      ChannelTabs.setActive('combined');
+      return;
+    }
+
+    if (data) {
+      State.currentTab = 'videos';
+      await this.goVideo(data, ch.id);
+      return;
+    }
+
+    State.currentTab = 'combined';
+    await Loader.loadChannelCombined(ch.id, ch.avatar, isNavigation);
+    ChannelTabs.setActive('combined');
+  },
+
+  start() {
+    ChannelsBar.create();
+
+    this.routeFromUrl(true);
+
+    window.addEventListener('popstate', () => this.handlePop());
+  },
+};
+
+const MetricCards = {
+  colors: null,
+
+  faded(hex) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.substr(0, 2), 16);
+    const g = parseInt(h.substr(2, 2), 16);
+    const b = parseInt(h.substr(4, 2), 16);
+    const fadedR = Math.round(r + (255 - r) * 0.2);
+    const fadedG = Math.round(g + (255 - g) * 0.2);
+    const fadedB = Math.round(b + (255 - b) * 0.2);
+    return `rgb(${fadedR}, ${fadedG}, ${fadedB})`;
+  },
+
+  bind() {
+    const cards = Array.from(document.querySelectorAll('.stat-card'));
+    this.colors = {
+      0: this.faded(Config.colors.views),
+      1: this.faded(Config.colors.likes),
+      2: this.faded(Config.colors.comments),
+      3: this.faded(Config.colors.uploads),
+    };
+
+    cards.forEach((card, index) => {
+      card.addEventListener('click', async () => {
+        cards.forEach(c => {
+          c.classList.remove('active');
+          c.style.removeProperty('--active-card-color');
+        });
+        card.classList.add('active');
+        card.style.setProperty('--active-card-color', this.colors[index]);
+
+        State.selectedMetricIndex = index;
+
+        ChartModeDropdown.show();
+        const didChangeMode = await ChartModeDropdown.refresh();
+        if (!didChangeMode) {
+          Charts.create({ animate: true });
+        }
+      });
+    });
+
+    const initial = cards[State.selectedMetricIndex] || cards[0];
+    if (initial) {
+      initial.classList.add('active');
+      initial.style.setProperty(
+        '--active-card-color',
+        this.colors[State.selectedMetricIndex] || this.colors[0]
+      );
+    }
+  },
+
+  init() {
+    this.bind();
+  },
+};
 
 const App = {
   init() {
     try {
+      if ('scrollRestoration' in window.history) {
+        window.history.scrollRestoration = 'manual';
+      }
+      window.scrollTo(0, 0);
+
       this.checkDeps();
       Theme.init();
-
-      State.loadSettings();
-
-      Search.init();
-      Export.init();
       Layout.bindEvents();
+      Export.init();
+      ChannelsBar.create();
+      MetricCards.init();
       Rankings.init();
       Gains.init();
       Listing.init();
+      ChannelVideos.bindControls();
+      Router.start();
     } catch (error) {
       this.showFallback(error);
     }
@@ -5586,9 +5663,7 @@ const App = {
     const deps = {
       Luxon: typeof luxon !== 'undefined',
       Highcharts: typeof Highcharts !== 'undefined',
-      Odometer: typeof Odometer !== 'undefined',
     };
-
     if (!deps.Luxon)
       throw new Error('Luxon library is required but not loaded');
   },

@@ -2986,6 +2986,27 @@ const Listing = {
         ? 'No videos available for this filter'
         : 'No videos match the current search';
       tbody.innerHTML = `<tr><td colspan="8" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">${message}</td></tr>`;
+
+      // Update subtitle for 0 results
+      const subtitle = document.getElementById('listingSubtitle');
+      if (subtitle) {
+        const totalCount = this.state.items.length;
+        const label =
+          this.state.filter === 'all'
+            ? 'videos'
+            : this.state.filter === 'long'
+            ? 'videos'
+            : 'shorts';
+
+        if (q) {
+          subtitle.textContent = `0 of ${totalCount.toLocaleString()} ${label} (filtered)`;
+        } else if (this.state.items.length === 0) {
+          subtitle.textContent = `0 ${label}`;
+        } else {
+          subtitle.textContent = `0 ${label} (filtered)`;
+        }
+      }
+
       return;
     }
 
@@ -3000,32 +3021,32 @@ const Listing = {
       const typeLabel = v.isShort ? 'Short' : 'Long';
       const rank = index + 1;
       tr.innerHTML = `
-		      <td class="listing-rank-cell" data-label="#">
-		        <div class="listing-rank">${rank}</div>
-		      </td>
-		      <td class="listing-video-cell" data-label="Video">     
-	          <div class="listing-video">
-	            <img class="listing-video-thumb" src="${
-                v.thumbnail
-              }" alt="" loading="lazy"/>
-	            <div class="listing-video-title">${v.title || ''}</div>
-	          </div>
-	        </td>
-	        <td class="listing-num" data-label="Views">${(
-            v.views || 0
-          ).toLocaleString()}</td>
-	        <td class="listing-num" data-label="Likes">${(
-            v.likes || 0
-          ).toLocaleString()}</td>
-	        <td class="listing-num" data-label="Comments">${(
-            v.comments || 0
-          ).toLocaleString()}</td>
-	        <td data-label="Duration">${v.duration || ''}</td>
-	        <td data-label="Upload Date">${this.formatDate(v.uploadTime)}</td>
-	        <td data-label="Type"><span class="type-pill ${
-            v.isShort ? 'short' : 'long'
-          }">${typeLabel}</span></td>
-	      `;
+      <td class="listing-rank-cell" data-label="#">
+        <div class="listing-rank">${rank}</div>
+      </td>
+      <td class="listing-video-cell" data-label="Video">     
+        <div class="listing-video">
+          <img class="listing-video-thumb" src="${
+            v.thumbnail
+          }" alt="" loading="lazy"/>
+          <div class="listing-video-title">${v.title || ''}</div>
+        </div>
+      </td>
+      <td class="listing-num" data-label="Views">${(
+        v.views || 0
+      ).toLocaleString()}</td>
+      <td class="listing-num" data-label="Likes">${(
+        v.likes || 0
+      ).toLocaleString()}</td>
+      <td class="listing-num" data-label="Comments">${(
+        v.comments || 0
+      ).toLocaleString()}</td>
+      <td data-label="Duration">${v.duration || ''}</td>
+      <td data-label="Upload Date">${this.formatDate(v.uploadTime)}</td>
+      <td data-label="Type"><span class="type-pill ${
+        v.isShort ? 'short' : 'long'
+      }">${typeLabel}</span></td>
+    `;
       tr.addEventListener('click', () => {
         Loader.loadVideo(v.videoId, State.currentChannel);
         const searchInput = Dom.get('searchInput');
@@ -3928,10 +3949,17 @@ const ChannelVideos = {
     const subtitle = Dom.get('videosSubtitle');
     if (subtitle) {
       const label = filter === 'short' ? 'shorts' : 'videos';
-      const total = State.videosGrid.items.length;
+
+      let totalOfType = State.videosGrid.items.length;
+      if (filter === 'short') {
+        totalOfType = State.videosGrid.items.filter(v => v.isShort).length;
+      } else if (filter === 'long') {
+        totalOfType = State.videosGrid.items.filter(v => !v.isShort).length;
+      }
+
       const available = this.filteredItems.length;
       subtitle.textContent = q
-        ? `${available.toLocaleString()} of ${total.toLocaleString()} ${label} (filtered)`
+        ? `${available.toLocaleString()} of ${totalOfType.toLocaleString()} ${label} (filtered)`
         : `${available.toLocaleString()} ${label}`;
     }
   },

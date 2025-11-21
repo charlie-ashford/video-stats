@@ -2860,6 +2860,10 @@ const Listing = {
   },
 
   cache: new Map(),
+  pageSize: 60,
+  filteredItems: [],
+  visibleCount: 0,
+  _scrollHandler: null,
 
   parseDurationToSeconds(str) {
     if (!str) return 0;
@@ -2998,6 +3002,102 @@ const Listing = {
     }
   },
 
+  renderVisible(startIndex = 0) {
+    const tbody = Dom.get('listingTbody');
+    if (!tbody) return;
+
+    if (startIndex === 0) tbody.innerHTML = '';
+
+    const frag = document.createDocumentFragment();
+    for (let i = startIndex; i < this.visibleCount; i++) {
+      const v = this.filteredItems[i];
+      if (!v) continue;
+
+      const tr = document.createElement('tr');
+      tr.className = 'listing-row';
+      const typeLabel = v.isShort ? 'Short' : 'Long';
+      const rank = i + 1;
+      tr.innerHTML = `
+        <td class="listing-rank-cell" data-label="#">
+          <div class="listing-rank">${rank}</div>
+        </td>
+        <td class="listing-video-cell" data-label="Video">     
+          <div class="listing-video">
+            <img class="listing-video-thumb" src="${
+              v.thumbnail
+            }" alt="" loading="lazy"/>
+            <div class="listing-video-title">${v.title || ''}</div>
+          </div>
+        </td>
+        <td class="listing-num" data-label="Views">${(
+          v.views || 0
+        ).toLocaleString()}</td>
+        <td class="listing-num" data-label="Likes">${(
+          v.likes || 0
+        ).toLocaleString()}</td>
+        <td class="listing-num" data-label="Comments">${(
+          v.comments || 0
+        ).toLocaleString()}</td>
+        <td data-label="Duration">${v.duration || ''}</td>
+        <td data-label="Upload Date">${this.formatDate(v.uploadTime)}</td>
+        <td data-label="Type"><span class="type-pill ${
+          v.isShort ? 'short' : 'long'
+        }">${typeLabel}</span></td>
+      `;
+      tr.addEventListener('click', () => {
+        Loader.loadVideo(v.videoId, State.currentChannel);
+        const searchInput = Dom.get('searchInput');
+        if (searchInput) searchInput.value = v.title || '';
+      });
+      frag.appendChild(tr);
+    }
+    tbody.appendChild(frag);
+  },
+
+  loadMoreIfNeeded() {
+    if (!State.isListingView) return;
+    if (!this.filteredItems || !this.filteredItems.length) return;
+    if (this.visibleCount >= this.filteredItems.length) return;
+
+    const tableWrapper = document.querySelector('.listing-table-wrapper');
+    if (!tableWrapper) return;
+
+    const scrollBottom = tableWrapper.scrollTop + tableWrapper.clientHeight;
+    const threshold = tableWrapper.scrollHeight - tableWrapper.clientHeight * 2;
+    if (scrollBottom < threshold) return;
+
+    const prevCount = this.visibleCount;
+    this.visibleCount = Math.min(
+      this.visibleCount + this.pageSize,
+      this.filteredItems.length
+    );
+
+    if (this.visibleCount > prevCount) {
+      this.renderVisible(prevCount);
+    }
+  },
+
+  bindInfiniteScroll() {
+    if (this._scrollHandler) return;
+    const tableWrapper = document.querySelector('.listing-table-wrapper');
+    if (!tableWrapper) return;
+
+    this._scrollHandler = Dom.debounce(() => this.loadMoreIfNeeded(), 20);
+    tableWrapper.addEventListener('scroll', this._scrollHandler, {
+      passive: true,
+    });
+  },
+
+  unbindInfiniteScroll() {
+    if (this._scrollHandler) {
+      const tableWrapper = document.querySelector('.listing-table-wrapper');
+      if (tableWrapper) {
+        tableWrapper.removeEventListener('scroll', this._scrollHandler);
+      }
+      this._scrollHandler = null;
+    }
+  },
+
   render() {
     const tbody = Dom.get('listingTbody');
     if (!tbody) return;
@@ -3010,9 +3110,17 @@ const Listing = {
     }
 
     const q = this.state.q.trim().toLowerCase();
-    const filtered = this.state.items.filter(v =>
+    let filtered = this.state.items.filter(v =>
       q ? (v.title || '').toLowerCase().includes(q) : true
     );
+
+    filtered = filtered.sort((a, b) =>
+      this.compare(a, b, this.state.sortKey, this.state.sortDir)
+    );
+
+    this.filteredItems = filtered;
+    this.visibleCount = Math.min(this.pageSize, this.filteredItems.length);
+    this.renderVisible(0);
 
     if (filtered.length === 0) {
       const message = q
@@ -3044,52 +3152,6 @@ const Listing = {
       return;
     }
 
-    const sorted = filtered.sort((a, b) =>
-      this.compare(a, b, this.state.sortKey, this.state.sortDir)
-    );
-
-    const frag = document.createDocumentFragment();
-    sorted.forEach((v, index) => {
-      const tr = document.createElement('tr');
-      tr.className = 'listing-row';
-      const typeLabel = v.isShort ? 'Short' : 'Long';
-      const rank = index + 1;
-      tr.innerHTML = `
-      <td class="listing-rank-cell" data-label="#">
-        <div class="listing-rank">${rank}</div>
-      </td>
-      <td class="listing-video-cell" data-label="Video">     
-        <div class="listing-video">
-          <img class="listing-video-thumb" src="${
-            v.thumbnail
-          }" alt="" loading="lazy"/>
-          <div class="listing-video-title">${v.title || ''}</div>
-        </div>
-      </td>
-      <td class="listing-num" data-label="Views">${(
-        v.views || 0
-      ).toLocaleString()}</td>
-      <td class="listing-num" data-label="Likes">${(
-        v.likes || 0
-      ).toLocaleString()}</td>
-      <td class="listing-num" data-label="Comments">${(
-        v.comments || 0
-      ).toLocaleString()}</td>
-      <td data-label="Duration">${v.duration || ''}</td>
-      <td data-label="Upload Date">${this.formatDate(v.uploadTime)}</td>
-      <td data-label="Type"><span class="type-pill ${
-        v.isShort ? 'short' : 'long'
-      }">${typeLabel}</span></td>
-    `;
-      tr.addEventListener('click', () => {
-        Loader.loadVideo(v.videoId, State.currentChannel);
-        const searchInput = Dom.get('searchInput');
-        if (searchInput) searchInput.value = v.title || '';
-      });
-      frag.appendChild(tr);
-    });
-    tbody.appendChild(frag);
-
     const subtitle = document.getElementById('listingSubtitle');
     if (subtitle) {
       const totalCount = this.state.items.length;
@@ -3107,6 +3169,8 @@ const Listing = {
         subtitle.textContent = `${filteredCount.toLocaleString()} ${label} loaded`;
       }
     }
+
+    this.bindInfiniteScroll();
   },
 
   bind() {
@@ -3154,7 +3218,26 @@ const Listing = {
         } else {
           applyIndicator(this.state.sortKey, this.state.sortDir);
         }
-        this.render();
+
+        const tbody = Dom.get('listingTbody');
+        if (tbody) {
+          const q = this.state.q.trim().toLowerCase();
+          let filtered = this.state.items.filter(v =>
+            q ? (v.title || '').toLowerCase().includes(q) : true
+          );
+
+          filtered = filtered.sort((a, b) =>
+            this.compare(a, b, this.state.sortKey, this.state.sortDir)
+          );
+
+          this.filteredItems = filtered;
+          this.visibleCount = Math.min(
+            this.filteredItems.length,
+            Math.max(this.visibleCount, this.pageSize)
+          );
+          this.renderVisible(0);
+          this.bindInfiniteScroll();
+        }
       });
     });
 
@@ -3165,6 +3248,7 @@ const Listing = {
           .forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.state.filter = btn.dataset.filter;
+        window.scrollTo(0, 0);
         this.updateWithFetch();
       });
     });
@@ -3175,6 +3259,7 @@ const Listing = {
         'input',
         Dom.debounce(e => {
           this.state.q = e.target.value || '';
+          window.scrollTo(0, 0);
           this.render();
         }, 150)
       );

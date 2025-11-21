@@ -3871,6 +3871,15 @@ const ChannelTabs = {
   },
 };
 
+function formatDuration(duration) {
+  if (!duration) return '';
+  const parts = duration.split(':');
+  if (parts.length === 3 && parseInt(parts[0]) === 0) {
+    return `${parts[1]}:${parts[2]}`;
+  }
+  return duration;
+}
+
 const ChannelVideos = {
   grid: null,
   empty: null,
@@ -3946,26 +3955,41 @@ const ChannelVideos = {
 
       const card = Dom.create('div', 'video-card');
       card.innerHTML = `
-        <img class="video-card-thumb" src="${
-          v.thumbnail
-        }" alt="" loading="lazy" />
-        <div class="video-card-body">
-          <div class="video-card-title">${v.title || ''}</div>
-          <div class="video-card-meta">
-            <span><i class="fas fa-eye"></i> ${(
-              v.views || 0
-            ).toLocaleString()}</span>
-            <span><i class="fas fa-thumbs-up"></i> ${(
-              v.likes || 0
-            ).toLocaleString()}</span>
-          </div>
-          <div class="video-card-badges">
-            <span class="type-badge ${v.isShort ? 'short' : 'long'}">
-              ${v.isShort ? 'Short' : 'Long'}
-            </span>
-          </div>
-        </div>
-      `;
+	  <div class="video-card-thumb-wrapper">
+	    <img class="video-card-thumb" src="${v.thumbnail}" alt="" loading="lazy" />
+	    ${
+        v.duration
+          ? `<span class="video-duration-badge">${formatDuration(
+              v.duration
+            )}</span>`
+          : ''
+      }
+	  </div>
+	  <div class="video-card-body">
+	    <div class="video-card-title">${v.title || ''}</div>
+	    <div class="video-card-meta">
+	      <span><i class="fas fa-eye"></i> ${(v.views || 0).toLocaleString()}</span>
+	      <span><i class="fas fa-thumbs-up"></i> ${(
+          v.likes || 0
+        ).toLocaleString()}</span>
+	    </div>
+	    ${
+        v.uploadTime
+          ? `<div class="video-card-date">
+	            <i class="fas fa-calendar"></i>
+	            <span>${luxon.DateTime.fromISO(v.uploadTime)
+                .setZone('America/New_York')
+                .toFormat('MMM d, yyyy')}</span>
+	          </div>`
+          : ''
+      }
+	    <div class="video-card-badges">
+	      <span class="type-badge ${v.isShort ? 'short' : 'long'}">
+	        ${v.isShort ? 'Short' : 'Long'}
+	      </span>
+	    </div>
+	  </div>
+	`;
       card.addEventListener('click', () => {
         Loader.loadVideo(v.videoId, State.currentChannel);
         const input = Dom.get('searchInput');

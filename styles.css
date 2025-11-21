@@ -1851,6 +1851,47 @@ header h1 {
   margin-top: 0.25rem;
 }
 
+.video-card-date {
+  font-size: 0.75rem;
+  color: var(--muted-text-color);
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.video-card-date i {
+  font-size: 0.65rem;
+}
+
+.video-card-thumb-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+}
+
+.video-card-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.video-duration-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  font-family: 'Roboto', sans-serif;
+  letter-spacing: 0.5px;
+}
+
 .type-badge {
   display: inline-block;
   padding: 0.15rem 0.45rem;

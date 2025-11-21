@@ -1509,8 +1509,40 @@ const ChartBuilder = {
       shared: !isHourly,
       useHTML: true,
       borderRadius: 10,
-      shadow: true,
-      hideDelay: State.isMobile() ? 1000 : 500,
+      shadow: {
+        color: 'rgba(0,0,0,0.5)',
+        offsetX: 2,
+        offsetY: 2,
+        opacity: 1,
+      },
+      hideDelay: 0,
+      animation: false,
+      followPointer: true,
+      positioner: function (labelWidth, labelHeight, point) {
+        const chart = this.chart;
+        const chartWidth = chart.chartWidth;
+        const chartHeight = chart.chartHeight;
+        const tooltipPadding = 15;
+
+        let x = point.plotX + chart.plotLeft;
+        let y = point.plotY + chart.plotTop;
+
+        x = x + tooltipPadding;
+
+        if (x + labelWidth > chartWidth) {
+          x = point.plotX + chart.plotLeft - labelWidth - tooltipPadding;
+        }
+
+        y = point.plotY + chart.plotTop - labelHeight / 2;
+
+        if (y < 0) {
+          y = tooltipPadding;
+        } else if (y + labelHeight > chartHeight) {
+          y = chartHeight - labelHeight - tooltipPadding;
+        }
+
+        return { x, y };
+      },
     };
   },
 };
@@ -1688,7 +1720,15 @@ const Charts = {
         align: 'center',
       },
       credits: { enabled: false },
-      xAxis: ChartBuilder.xAxis(isHourly),
+      xAxis: {
+        crosshair: {
+          color: Dom.getCssVar('--border-color'),
+          width: 1.5,
+          dashStyle: 'Dash',
+          zIndex: 2,
+        },
+        ...ChartBuilder.xAxis(isHourly),
+      },
       yAxis: ChartBuilder.yAxis(yRange, isHourly),
       series: seriesConfig,
       legend: {
@@ -1822,11 +1862,6 @@ const Charts = {
     }
 
     await ChartModeDropdown.refresh();
-  },
-
-  redraw() {
-    const delay = State.isMobile() ? 300 : 100;
-    setTimeout(() => this.create({ animate: false }), delay);
   },
 };
 
@@ -2987,7 +3022,6 @@ const Listing = {
         : 'No videos match the current search';
       tbody.innerHTML = `<tr><td colspan="8" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">${message}</td></tr>`;
 
-      // Update subtitle for 0 results
       const subtitle = document.getElementById('listingSubtitle');
       if (subtitle) {
         const totalCount = this.state.items.length;

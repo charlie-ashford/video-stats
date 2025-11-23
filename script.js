@@ -5729,6 +5729,18 @@ const Router = {
       return;
     }
 
+    if (data && Config.channels.some(c => c.id === data)) {
+      const legacyChannel = this.getChannelInfo(data);
+      State.currentTab = 'combined';
+      await Loader.loadChannelCombined(
+        legacyChannel.id,
+        legacyChannel.avatar,
+        isNavigation
+      );
+      ChannelTabs.setActive('combined');
+      return;
+    }
+
     if (data) {
       State.currentTab = 'videos';
       await this.goVideo(data, ch.id);

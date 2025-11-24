@@ -80,6 +80,11 @@ const Config = {
       avatar: 'https://www.banner.yt/UC5Nh0Elc5d1sQ8NvirFBKOQ/avatar',
     },
     {
+      id: 'sabrina',
+      name: 'Sabrina Carpenter',
+      avatar: 'https://www.banner.yt/UCPKWE1H6xhxwPlqUlKgHb_w/avatar',
+    },
+    {
       id: 'pewdiepie',
       name: 'PewDiePie',
       avatar: 'https://www.banner.yt/UC-lHJZR3Gqxm24_Vd_AJ5Yw/avatar',

@@ -656,6 +656,119 @@ const Dom = {
   },
 };
 
+const EditableValue = {
+  makeEditable(valueElement, slider, updateCallback) {
+    if (!valueElement || !slider) return;
+
+    const min = parseInt(slider.min) || 1;
+    const max = parseInt(slider.max) || 100;
+    const step = parseInt(slider.step) || 1;
+
+    valueElement.classList.add('editable-value');
+    valueElement.setAttribute('title', 'Click and type to change');
+    valueElement.setAttribute('tabindex', '0');
+
+    let typedValue = '';
+    let typingTimeout = null;
+    let updateTimeout = null;
+
+    const applyValue = () => {
+      if (typedValue === '') return;
+
+      let newValue = parseInt(typedValue);
+
+      if (!isNaN(newValue)) {
+        newValue = Math.max(min, Math.min(max, newValue));
+        newValue = Math.round(newValue / step) * step;
+
+        valueElement.textContent = newValue;
+        slider.value = newValue;
+
+        if (updateCallback) {
+          updateCallback(newValue);
+        }
+      }
+
+      typedValue = '';
+      valueElement.classList.remove('typing');
+    };
+
+    const handleTyping = key => {
+      clearTimeout(typingTimeout);
+      clearTimeout(updateTimeout);
+
+      typedValue += key;
+      valueElement.classList.add('typing');
+
+      typingTimeout = setTimeout(() => {
+        applyValue();
+      }, 800);
+
+      let tempValue = parseInt(typedValue);
+      if (!isNaN(tempValue)) {
+        tempValue = Math.max(min, Math.min(max, tempValue));
+        slider.value = tempValue;
+
+        clearTimeout(updateTimeout);
+        updateTimeout = setTimeout(() => {
+          if (updateCallback) {
+            updateCallback(tempValue);
+          }
+        }, 300);
+      }
+    };
+
+    valueElement.addEventListener('keydown', e => {
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        handleTyping(e.key);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        if (typedValue.length > 0) {
+          typedValue = typedValue.slice(0, -1);
+
+          if (typedValue === '') {
+            valueElement.classList.remove('typing');
+            clearTimeout(typingTimeout);
+            clearTimeout(updateTimeout);
+          } else {
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+              applyValue();
+            }, 800);
+          }
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTimeout(typingTimeout);
+        clearTimeout(updateTimeout);
+        applyValue();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        typedValue = '';
+        valueElement.classList.remove('typing');
+        valueElement.removeAttribute('data-typing');
+        clearTimeout(typingTimeout);
+        clearTimeout(updateTimeout);
+      }
+    });
+
+    valueElement.addEventListener('click', e => {
+      e.stopPropagation();
+      valueElement.focus();
+    });
+
+    valueElement.addEventListener('blur', () => {
+      if (typedValue !== '') {
+        applyValue();
+      } else {
+        valueElement.classList.remove('typing');
+        valueElement.removeAttribute('data-typing');
+      }
+    });
+  },
+};
+
 const Format = {
   axis(value, tickInterval) {
     const abs = Math.abs(value);
@@ -2294,14 +2407,14 @@ const Rankings = {
     if (periodValue)
       periodValue.textContent = State.rankingsSettings.timePeriod;
 
-    if (countSlider) {
+    if (countSlider && countValue) {
       countSlider.value = State.rankingsSettings.videoCount;
+
       countSlider.addEventListener(
         'input',
         e => {
           State.rankingsSettings.videoCount = parseInt(e.target.value);
-          if (countValue)
-            countValue.textContent = State.rankingsSettings.videoCount;
+          countValue.textContent = State.rankingsSettings.videoCount;
           State.saveSettings();
           clearTimeout(this.updateTimeouts.get('videoCount'));
           this.updateTimeouts.set(
@@ -2311,16 +2424,27 @@ const Rankings = {
         },
         { passive: true }
       );
+
+      EditableValue.makeEditable(countValue, countSlider, newValue => {
+        State.rankingsSettings.videoCount = newValue;
+        countValue.textContent = newValue;
+        State.saveSettings();
+        clearTimeout(this.updateTimeouts.get('videoCount'));
+        this.updateTimeouts.set(
+          'videoCount',
+          setTimeout(() => this.updateInstant(), 50)
+        );
+      });
     }
 
-    if (periodSlider) {
+    if (periodSlider && periodValue) {
       periodSlider.value = State.rankingsSettings.timePeriod;
+
       periodSlider.addEventListener(
         'input',
         e => {
           State.rankingsSettings.timePeriod = parseInt(e.target.value);
-          if (periodValue)
-            periodValue.textContent = State.rankingsSettings.timePeriod;
+          periodValue.textContent = State.rankingsSettings.timePeriod;
           State.saveSettings();
           clearTimeout(this.updateTimeouts.get('timePeriod'));
           this.updateTimeouts.set(
@@ -2330,6 +2454,17 @@ const Rankings = {
         },
         { passive: true }
       );
+
+      EditableValue.makeEditable(periodValue, periodSlider, newValue => {
+        State.rankingsSettings.timePeriod = newValue;
+        periodValue.textContent = newValue;
+        State.saveSettings();
+        clearTimeout(this.updateTimeouts.get('timePeriod'));
+        this.updateTimeouts.set(
+          'timePeriod',
+          setTimeout(() => this.updateInstant(), 50)
+        );
+      });
     }
   },
 
@@ -2777,19 +2912,28 @@ const Gains = {
 
     if (countValue) countValue.textContent = State.gainsSettings.count;
 
-    if (countSlider) {
+    if (countSlider && countValue) {
       countSlider.value = State.gainsSettings.count;
+
       countSlider.addEventListener(
         'input',
         e => {
           State.gainsSettings.count = parseInt(e.target.value);
-          if (countValue) countValue.textContent = State.gainsSettings.count;
+          countValue.textContent = State.gainsSettings.count;
           State.saveSettings();
           clearTimeout(this.updateTimeout);
           this.updateTimeout = setTimeout(() => this.updateInstant(false), 50);
         },
         { passive: true }
       );
+
+      EditableValue.makeEditable(countValue, countSlider, newValue => {
+        State.gainsSettings.count = newValue;
+        countValue.textContent = newValue;
+        State.saveSettings();
+        clearTimeout(this.updateTimeout);
+        this.updateTimeout = setTimeout(() => this.updateInstant(false), 50);
+      });
     }
   },
 

@@ -3310,7 +3310,7 @@ const Listing = {
       if (q) {
         subtitle.textContent = `${filteredCount.toLocaleString()} of ${totalCount.toLocaleString()} ${label} (filtered)`;
       } else {
-        subtitle.textContent = `${filteredCount.toLocaleString()} ${label} loaded`;
+        subtitle.textContent = `${filteredCount.toLocaleString()} ${label}`;
       }
     }
 

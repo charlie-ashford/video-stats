@@ -4274,11 +4274,6 @@ const ChannelVideos = {
 	          </div>`
           : ''
       }
-	    <div class="video-card-badges">
-	      <span class="type-badge ${v.isShort ? 'short' : 'long'}">
-	        ${v.isShort ? 'Short' : 'Long'}
-	      </span>
-	    </div>
 	  </div>
 	`;
       card.addEventListener('click', () => {

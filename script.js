@@ -2674,16 +2674,16 @@ const Gains = {
   getPeriodKey(period) {
     if (period === 0) return 'past1h';
     if (period === 1) return 'past24h';
-    if (period === 3) return 'past3d';
     if (period === 7) return 'past7d';
+    if (period === 30) return 'past30d';
     return 'past24h';
   },
 
   getPreviousPeriodKey(period) {
     if (period === 0) return 'previous1h';
     if (period === 1) return 'previous24h';
-    if (period === 3) return 'previous3d';
     if (period === 7) return 'previous7d';
+    if (period === 30) return 'previous30d';
     return 'previous24h';
   },
 
@@ -2767,18 +2767,18 @@ const Gains = {
           ? 'in last 1h'
           : State.gainsSettings.period === 1
           ? 'in last 24h'
-          : State.gainsSettings.period === 3
-          ? 'in last 3d'
-          : 'in last 7d';
+          : State.gainsSettings.period === 7
+          ? 'in last 7d'
+          : 'in last 30d';
 
       const periodLabelGain =
         State.gainsSettings.period === 0
           ? '1h'
           : State.gainsSettings.period === 1
           ? '24h'
-          : State.gainsSettings.period === 3
-          ? '3d'
-          : '7d';
+          : State.gainsSettings.period === 7
+          ? '7d'
+          : '30d';
 
       item.innerHTML = `
         <div class="gains-position">${index + 1}</div>
@@ -3397,7 +3397,12 @@ const Listing = {
           .forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.state.filter = btn.dataset.filter;
-        window.scrollTo(0, 0);
+
+        const tableWrapper = document.querySelector('.listing-table-wrapper');
+        if (tableWrapper) {
+          tableWrapper.scrollTop = 0;
+        }
+
         this.updateWithFetch();
       });
     });
@@ -3408,7 +3413,12 @@ const Listing = {
         'input',
         Dom.debounce(e => {
           this.state.q = e.target.value || '';
-          window.scrollTo(0, 0);
+
+          const tableWrapper = document.querySelector('.listing-table-wrapper');
+          if (tableWrapper) {
+            tableWrapper.scrollTop = 0;
+          }
+
           this.render();
         }, 150)
       );
@@ -3419,6 +3429,11 @@ const Listing = {
       tableWrapper.addEventListener('scroll', e => {
         if (e.target.scrollTop > 0) e.target.classList.add('scrolled');
         else e.target.classList.remove('scrolled');
+
+        if (State.isListingView && State.currentChannel) {
+          const scrollKey = `listing:${State.currentChannel}`;
+          ScrollState.positions.set(scrollKey, e.target.scrollTop);
+        }
       });
 
       Dom.enableHorizontalWheelScroll(tableWrapper, { requireShift: true });
@@ -5131,6 +5146,22 @@ const Loader = {
   _loadPromises: new Map(),
   _loadedKey: null,
 
+  saveCurrentScrollPosition() {
+    if (State.isVideosGridView) {
+      ScrollState.save('videos', State.currentChannel);
+    } else if (State.isGainsView) {
+      ScrollState.save('gains', State.currentChannel);
+    } else if (State.isRankingsView) {
+      ScrollState.save('rankings', State.currentChannel);
+    } else if (State.isListingView) {
+      ScrollState.save('listing', State.currentChannel);
+    } else if (State.currentEntityId === State.currentChannel) {
+      ScrollState.save('combined', State.currentChannel);
+    } else {
+      ScrollState.save('video', State.currentEntityId);
+    }
+  },
+
   async setupProfile(profileUrl) {
     let headerLeft = document.querySelector('.header-left');
     if (!headerLeft) {
@@ -5220,8 +5251,13 @@ const Loader = {
     const key = `channel-combined:${channelId}`;
     if (this._loadPromises.has(key)) return this._loadPromises.get(key);
     const p = (async () => {
-      if (State.isVideosGridView) {
-        ScrollState.save('videos', State.currentChannel);
+      this.saveCurrentScrollPosition();
+
+      const switchingChannels =
+        State.currentChannel && State.currentChannel !== channelId;
+
+      if (switchingChannels) {
+        ScrollState.clear('combined', channelId);
       }
 
       State.reset();
@@ -5233,7 +5269,9 @@ const Loader = {
       State.isListingView = false;
       State.isVideosGridView = false;
 
-      if (!isNavigation) window.scrollTo(0, 0);
+      if (switchingChannels || !isNavigation) {
+        window.scrollTo(0, 0);
+      }
 
       const headerTitle = document.querySelector('header h1');
       if (headerTitle) headerTitle.textContent = 'Channel Analytics';
@@ -5279,6 +5317,12 @@ const Loader = {
 
           ChartModeDropdown.show();
 
+          if (!switchingChannels && ScrollState.has('combined', channelId)) {
+            requestAnimationFrame(() => {
+              ScrollState.restore('combined', channelId);
+            });
+          }
+
           if ('requestIdleCallback' in window) {
             requestIdleCallback(() => {
               Rankings.prefetch(State.currentChannel);
@@ -5318,11 +5362,13 @@ const Loader = {
     if (this._loadPromises.has(key)) return this._loadPromises.get(key);
 
     const p = (async () => {
+      this.saveCurrentScrollPosition();
+
       const switchingChannels =
         State.currentChannel && State.currentChannel !== channelId;
 
-      if (State.isVideosGridView) {
-        ScrollState.save('videos', State.currentChannel);
+      if (switchingChannels) {
+        ScrollState.clear('videos', channelId);
       }
 
       State.reset();
@@ -5332,10 +5378,6 @@ const Loader = {
       State.currentEntityId = channelId;
       State.currentChannel = channelId;
       State.isVideosGridView = true;
-
-      if (switchingChannels) {
-        ScrollState.clear('videos', channelId);
-      }
 
       if (switchingChannels || !isNavigation) {
         window.scrollTo(0, 0);
@@ -5398,8 +5440,13 @@ const Loader = {
     const key = `channel-rank:${channelId}`;
     if (this._loadPromises.has(key)) return this._loadPromises.get(key);
     const p = (async () => {
-      if (State.isVideosGridView) {
-        ScrollState.save('videos', State.currentChannel);
+      this.saveCurrentScrollPosition();
+
+      const switchingChannels =
+        State.currentChannel && State.currentChannel !== channelId;
+
+      if (switchingChannels) {
+        ScrollState.clear('rankings', channelId);
       }
 
       State.reset();
@@ -5410,7 +5457,9 @@ const Loader = {
       State.currentChannel = channelId;
       State.isRankingsView = true;
 
-      if (!isNavigation) window.scrollTo(0, 0);
+      if (switchingChannels || !isNavigation) {
+        window.scrollTo(0, 0);
+      }
 
       const headerTitle = document.querySelector('header h1');
       if (headerTitle) headerTitle.textContent = 'Video Rankings';
@@ -5445,6 +5494,12 @@ const Loader = {
             Rankings.applySettings();
           }
           Rankings.display(rankings);
+
+          if (!switchingChannels && ScrollState.has('rankings', channelId)) {
+            requestAnimationFrame(() => {
+              ScrollState.restore('rankings', channelId);
+            });
+          }
         } else {
           if (list) {
             list.innerHTML =
@@ -5473,8 +5528,13 @@ const Loader = {
     const key = `channel-gains:${channelId}`;
     if (this._loadPromises.has(key)) return this._loadPromises.get(key);
     const p = (async () => {
-      if (State.isVideosGridView) {
-        ScrollState.save('videos', State.currentChannel);
+      this.saveCurrentScrollPosition();
+
+      const switchingChannels =
+        State.currentChannel && State.currentChannel !== channelId;
+
+      if (switchingChannels) {
+        ScrollState.clear('gains', channelId);
       }
 
       State.reset();
@@ -5485,7 +5545,9 @@ const Loader = {
       State.currentChannel = channelId;
       State.isGainsView = true;
 
-      if (!isNavigation) window.scrollTo(0, 0);
+      if (switchingChannels || !isNavigation) {
+        window.scrollTo(0, 0);
+      }
 
       const headerTitle = document.querySelector('header h1');
       if (headerTitle) headerTitle.textContent = 'Video Gains';
@@ -5516,6 +5578,12 @@ const Loader = {
         );
         if (State.isGainsView) {
           Gains.display(gains, State.gainsSettings.count);
+
+          if (!switchingChannels && ScrollState.has('gains', channelId)) {
+            requestAnimationFrame(() => {
+              ScrollState.restore('gains', channelId);
+            });
+          }
         }
       } catch (error) {
         if (list) {
@@ -5540,8 +5608,13 @@ const Loader = {
     if (this._loadPromises.has(key)) return this._loadPromises.get(key);
 
     const p = (async () => {
-      if (State.isVideosGridView) {
-        ScrollState.save('videos', State.currentChannel);
+      this.saveCurrentScrollPosition();
+
+      const switchingChannels =
+        State.currentChannel && State.currentChannel !== channelId;
+
+      if (switchingChannels) {
+        ScrollState.clear('listing', channelId);
       }
 
       State.reset();
@@ -5552,7 +5625,9 @@ const Loader = {
       State.currentChannel = channelId;
       State.isListingView = true;
 
-      if (!isNavigation) window.scrollTo(0, 0);
+      if (switchingChannels || !isNavigation) {
+        window.scrollTo(0, 0);
+      }
 
       const headerTitle = document.querySelector('header h1');
       if (headerTitle) headerTitle.textContent = 'Video List';
@@ -5568,6 +5643,17 @@ const Loader = {
 
       Listing.applySettings();
       await Listing.refresh();
+
+      if (!switchingChannels && ScrollState.has('listing', channelId)) {
+        requestAnimationFrame(() => {
+          const tableWrapper = document.querySelector('.listing-table-wrapper');
+          if (tableWrapper) {
+            const savedY =
+              ScrollState.positions.get(`listing:${channelId}`) || 0;
+            tableWrapper.scrollTop = savedY;
+          }
+        });
+      }
     })();
 
     this._loadPromises.set(key, p);
@@ -5585,8 +5671,13 @@ const Loader = {
     if (this._loadedKey === key && !isNavigation) return;
 
     const p = (async () => {
-      if (State.isVideosGridView) {
-        ScrollState.save('videos', State.currentChannel);
+      this.saveCurrentScrollPosition();
+
+      const switchingVideos =
+        State.currentEntityId && State.currentEntityId !== videoId;
+
+      if (switchingVideos) {
+        ScrollState.clear('video', videoId);
       }
 
       State.reset();
@@ -5601,7 +5692,9 @@ const Loader = {
 
       State.currentTab = 'videos';
 
-      if (!isNavigation) window.scrollTo(0, 0);
+      if (switchingVideos || !isNavigation) {
+        window.scrollTo(0, 0);
+      }
 
       Dom.setMainView('video');
 
@@ -5671,6 +5764,12 @@ const Loader = {
 
           Dom.show('videoInfoCard');
           ChartModeDropdown.show();
+
+          if (!switchingVideos && ScrollState.has('video', videoId)) {
+            requestAnimationFrame(() => {
+              ScrollState.restore('video', videoId);
+            });
+          }
 
           const prefetchAll = () => {
             try {

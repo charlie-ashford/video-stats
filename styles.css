@@ -1120,6 +1120,185 @@ header h1 {
   display: flex;
 }
 
+.y-axis-bounds-btn {
+  position: absolute;
+  top: 1.5rem;
+  left: 7.5rem;
+  background-color: var(--card-background-color);
+  color: var(--text-color);
+  border: 1.5px solid var(--border-color);
+  padding: 0.5rem;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.y-axis-bounds-btn.show {
+  display: flex !important;
+}
+
+.y-axis-bounds-btn:hover {
+  background-color: var(--hover-card-background);
+  border-color: var(--hover-border-color);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+}
+
+.y-axis-bounds-btn i {
+  font-size: 1.1rem;
+}
+
+.chart-container.no-video-toggle .y-axis-bounds-btn {
+  left: 4.5rem;
+}
+
+.y-axis-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.y-axis-modal.active {
+  display: flex;
+}
+
+.y-axis-modal-content {
+  background-color: var(--card-background-color);
+  border-radius: var(--border-radius);
+  padding: 2rem;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.y-axis-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.y-axis-modal-header h3 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 1.3rem;
+  font-weight: var(--font-weight-bold);
+}
+
+.y-axis-modal-header .close-btn {
+  background: none;
+  border: none;
+  color: var(--text-color);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.3s;
+}
+
+.y-axis-modal-header .close-btn:hover {
+  background-color: var(--hover-background-color);
+}
+
+.y-axis-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.y-axis-modal-body .input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.y-axis-modal-body .input-group label {
+  font-size: 0.9rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.y-axis-modal-body .input-group input {
+  background-color: var(--input-background);
+  border: 1.5px solid var(--input-border);
+  color: var(--text-color);
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-family: var(--font-family);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.y-axis-modal-body .input-group input:focus {
+  outline: none;
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px rgba(31, 91, 219, 0.1);
+}
+
+.y-axis-modal-body .input-group input::placeholder {
+  color: var(--search-bar-placeholder);
+}
+
+.y-axis-modal-body .button-group {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.y-axis-modal-body .button-group button {
+  flex: 1;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: var(--font-family);
+}
+
+.y-axis-modal-body .reset-btn {
+  background-color: var(--hover-card-background);
+  color: var(--text-color);
+  border: 1.5px solid var(--border-color);
+}
+
+.y-axis-modal-body .reset-btn:hover {
+  background-color: var(--hover-background-color);
+  border-color: var(--hover-border-color);
+}
+
+.y-axis-modal-body .apply-btn {
+  background-color: var(--primary-color);
+  color: #ffffff;
+}
+
+.y-axis-modal-body .apply-btn:hover {
+  background-color: var(--button-hover-color);
+  box-shadow: 0 4px 12px rgba(219, 66, 31, 0.3);
+}
+
 .date-picker-content {
   background-color: var(--card-background-color);
   border-radius: var(--border-radius);
@@ -2551,6 +2730,49 @@ footer .fa-heart {
     left: 1rem;
   }
 
+  .y-axis-bounds-btn {
+    top: auto;
+    bottom: 1rem;
+    left: 7rem;
+    width: 36px;
+    height: 36px;
+  }
+
+  .chart-container.no-video-toggle .y-axis-bounds-btn {
+    left: 4rem;
+  }
+
+  .y-axis-bounds-btn i {
+    font-size: 1rem;
+  }
+
+  .y-axis-modal-content {
+    padding: 1.5rem;
+    width: 95%;
+  }
+
+  .y-axis-modal-header h3 {
+    font-size: 1.15rem;
+  }
+
+  .y-axis-modal-body {
+    gap: 1rem;
+  }
+
+  .y-axis-modal-body .input-group label {
+    font-size: 0.85rem;
+  }
+
+  .y-axis-modal-body .input-group input {
+    padding: 0.65rem;
+    font-size: 0.95rem;
+  }
+
+  .y-axis-modal-body .button-group button {
+    padding: 0.65rem;
+    font-size: 0.95rem;
+  }
+
   .video-type-toggle {
     top: auto;
     bottom: 1rem;
@@ -3009,6 +3231,11 @@ footer .fa-heart {
   .date-picker-button {
     padding: 0.65rem;
     font-size: 0.95rem;
+  }
+
+  .y-axis-bounds-btn {
+    bottom: 0.85rem;
+    left: 6.5rem;
   }
 
   .videos-grid {

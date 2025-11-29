@@ -1101,6 +1101,238 @@ const DataProcessor = {
   },
 };
 
+const YAxisBounds = {
+  state: {
+    customMin: null,
+    customMax: null,
+    isCustom: false,
+  },
+  button: null,
+
+  init() {
+    return this.createButton();
+  },
+
+  createButton() {
+    if (this.button && document.body.contains(this.button)) return this.button;
+
+    const chart = Dom.get('videoChart');
+    const parent = chart?.parentElement;
+    if (!parent) return null;
+
+    const button = document.createElement('button');
+    button.className = 'y-axis-bounds-btn';
+    button.innerHTML = '<i class="fas fa-arrows-alt-v"></i>';
+    button.title = 'Set Y-Axis Bounds';
+    button.onclick = () => this.openModal();
+
+    const vt =
+      window.VideoTypeToggle?.button ||
+      document.querySelector('.video-type-toggle');
+    const dp =
+      window.CustomDatePicker?.datePickerButton ||
+      document.querySelector('.custom-date-picker-button');
+    const ref = (vt && vt.parentElement === parent ? vt : dp) || null;
+
+    if (
+      ref &&
+      ref.parentElement === parent &&
+      typeof ref.after === 'function'
+    ) {
+      ref.after(button);
+    } else {
+      parent.insertBefore(button, chart);
+    }
+
+    this.button = button;
+    this.createModal();
+    return this.button;
+  },
+
+  show() {
+    if (!this.button) this.createButton();
+    if (this.button) {
+      this.button.classList.add('show');
+      this.button.style.display = 'flex';
+    }
+  },
+
+  hide() {
+    if (this.button) {
+      this.button.classList.remove('show');
+      this.button.style.display = 'none';
+    }
+  },
+
+  createModal() {
+    if (document.getElementById('yAxisBoundsModal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'yAxisBoundsModal';
+    modal.className = 'y-axis-modal';
+    modal.innerHTML = `
+      <div class="y-axis-modal-content">
+        <div class="y-axis-modal-header">
+          <h3>Set Y-Axis Bounds</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <div class="y-axis-modal-body">
+          <div class="input-group">
+            <label>Minimum:</label>
+            <input type="number" id="yAxisMin" step="any" placeholder="Auto">
+          </div>
+          <div class="input-group">
+            <label>Maximum:</label>
+            <input type="number" id="yAxisMax" step="any" placeholder="Auto">
+          </div>
+          <div class="button-group">
+            <button class="reset-btn">Reset to Auto</button>
+            <button class="apply-btn">Apply</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelector('.close-btn').onclick = () => this.closeModal();
+    modal.querySelector('.reset-btn').onclick = () => this.reset();
+    modal.querySelector('.apply-btn').onclick = () => this.apply();
+    modal.onclick = e => {
+      if (e.target === modal) this.closeModal();
+    };
+    modal.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.apply();
+      }
+    });
+  },
+
+  openModal() {
+    const modal = document.getElementById('yAxisBoundsModal');
+    if (!modal) return;
+
+    const minInput = document.getElementById('yAxisMin');
+    const maxInput = document.getElementById('yAxisMax');
+
+    if (this.state.isCustom) {
+      minInput.value = this.state.customMin ?? '';
+      maxInput.value = this.state.customMax ?? '';
+    } else {
+      minInput.value = '';
+      maxInput.value = '';
+    }
+
+    modal.classList.add('active');
+  },
+
+  closeModal() {
+    const modal = document.getElementById('yAxisBoundsModal');
+    if (modal) modal.classList.remove('active');
+  },
+
+  reset() {
+    this.state.customMin = null;
+    this.state.customMax = null;
+    this.state.isCustom = false;
+
+    const minInput = document.getElementById('yAxisMin');
+    const maxInput = document.getElementById('yAxisMax');
+    minInput.value = '';
+    maxInput.value = '';
+
+    if (State.chart?.yAxis?.[0]) {
+      const series = State.chart.series.filter(s => s.visible);
+      const allValues = [];
+      series.forEach(s => {
+        s.data.forEach(p => {
+          if (p?.y != null) allValues.push(p.y);
+        });
+      });
+
+      if (allValues.length > 0) {
+        const minVal = Math.min(...allValues);
+        const maxVal = Math.max(...allValues);
+        const range = maxVal - minVal;
+        const padding = Math.max(range * 0.05, 1);
+        let min = minVal - padding;
+        let max = maxVal + padding;
+
+        const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
+        if (!isGainsMode && State.isNumericMetric() && min < 0 && minVal >= 0) {
+          min = 0;
+        }
+        if (max <= min) max = min + (min > 0 ? min * 0.1 : 100);
+
+        State.chart.yAxis[0].setExtremes(min, max, true, true);
+      }
+    }
+
+    this.closeModal();
+  },
+
+  apply() {
+    const minInput = document.getElementById('yAxisMin');
+    const maxInput = document.getElementById('yAxisMax');
+
+    const minVal = minInput.value ? parseFloat(minInput.value) : null;
+    const maxVal = maxInput.value ? parseFloat(maxInput.value) : null;
+
+    if (minVal !== null && maxVal !== null && minVal >= maxVal) {
+      alert('Minimum must be less than maximum');
+      return;
+    }
+
+    const computeAuto = () => {
+      const series = State.chart?.series?.filter(s => s.visible) || [];
+      const values = [];
+      series.forEach(s => {
+        s.data.forEach(p => {
+          if (p && p.y != null && isFinite(p.y)) values.push(p.y);
+        });
+      });
+      if (values.length === 0) return { min: 0, max: 100 };
+      const minV = Math.min(...values);
+      const maxV = Math.max(...values);
+      const span = maxV - minV;
+      const pad = Math.max(span * 0.05, 1);
+      let autoMin = minV - pad;
+      let autoMax = maxV + pad;
+      const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
+      if (!isGainsMode && State.isNumericMetric() && autoMin < 0 && minV >= 0) {
+        autoMin = 0;
+      }
+      if (autoMax <= autoMin)
+        autoMax = autoMin + (autoMin > 0 ? autoMin * 0.1 : 100);
+      return { min: autoMin, max: autoMax };
+    };
+
+    const auto = computeAuto();
+    const newMin = minVal !== null ? minVal : auto.min;
+    const newMax = maxVal !== null ? maxVal : auto.max;
+
+    this.state.customMin = minVal;
+    this.state.customMax = maxVal;
+    this.state.isCustom = minVal !== null || maxVal !== null;
+
+    if (State.chart?.yAxis?.[0]) {
+      State.chart.yAxis[0].setExtremes(newMin, newMax, true, true);
+    }
+
+    this.closeModal();
+  },
+
+  getCurrentBounds() {
+    if (this.state.isCustom) {
+      return {
+        min: this.state.customMin,
+        max: this.state.customMax,
+      };
+    }
+    return null;
+  },
+};
+
 const ChartBuilder = {
   hexToRgb(hex) {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -1336,7 +1568,11 @@ const ChartBuilder = {
         }
       },
       redraw: function () {
+        const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
+        const customBounds = YAxisBounds.getCurrentBounds();
         if (
+          !customBounds &&
+          !isGainsMode &&
           State.isNumericMetric() &&
           this.yAxis?.[0] &&
           this.yAxis[0].min < 0 &&
@@ -1591,7 +1827,14 @@ const ChartBuilder = {
       softMax: range.max,
     };
 
-    if (State.isNumericMetric() && range.min === 0) {
+    const customBounds = YAxisBounds.getCurrentBounds();
+    const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
+    if (
+      !customBounds &&
+      State.isNumericMetric() &&
+      range.min === 0 &&
+      !isGainsMode
+    ) {
       config.floor = 0;
       config.minPadding = 0;
     }
@@ -1773,7 +2016,13 @@ const Charts = {
       const padding = Math.max(range * 0.05, 1);
       let min = minVal - padding;
       let max = maxVal + padding;
-      if (State.isNumericMetric() && min < 0 && minVal >= 0) min = 0;
+      const customBounds = YAxisBounds.getCurrentBounds();
+      if (!customBounds) {
+        const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
+        if (!isGainsMode && State.isNumericMetric() && min < 0 && minVal >= 0) {
+          min = 0;
+        }
+      }
       if (max <= min) max = min + (min > 0 ? min * 0.1 : 100);
       return { min, max };
     };
@@ -1798,7 +2047,11 @@ const Charts = {
         const padding = Math.max(range * 0.05, 1);
         let calcMin = minVal - padding;
         const calcMax = maxVal + padding;
-        if (calcMin < 0 && minVal >= 0) calcMin = 0;
+        const customBounds = YAxisBounds.getCurrentBounds();
+        if (!customBounds) {
+          const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
+          if (!isGainsMode && calcMin < 0 && minVal >= 0) calcMin = 0;
+        }
         yRange = { min: calcMin, max: calcMax };
       }
     } else {
@@ -1806,6 +2059,12 @@ const Charts = {
 
       const initialVisible = seriesConfig.filter(s => s.visible !== false);
       yRange = computeRangeFromSeries(initialVisible);
+    }
+
+    const customBounds = YAxisBounds.getCurrentBounds();
+    if (customBounds) {
+      if (customBounds.min !== null) yRange.min = customBounds.min;
+      if (customBounds.max !== null) yRange.max = customBounds.max;
     }
 
     if (!State.isChartReady) State.pendingYAxisRange = yRange;
@@ -1870,48 +2129,6 @@ const Charts = {
       ...visibleSeries.map(s => (s.data ? s.data.length : 0))
     );
 
-    const baseXAxis = ChartBuilder.xAxis(isHourly);
-    const xAxisWithRangeSync = isHourly
-      ? baseXAxis
-      : {
-          ...baseXAxis,
-          events: {
-            ...(baseXAxis.events || {}),
-            afterSetExtremes: function (e) {
-              if (
-                typeof e.min === 'number' &&
-                typeof e.max === 'number' &&
-                e.max > e.min
-              ) {
-                State.persistedRange = { xMin: e.min, xMax: e.max };
-              }
-              const chart = this.chart;
-              const seriesList = chart.series.filter(s => s.visible);
-              const range = computeRangeFromSeries(
-                seriesList.map(s => ({
-                  data:
-                    s.options.data ||
-                    s.userOptions.data ||
-                    s.data?.map(p => [p.x, p.y]),
-                })),
-                e.min,
-                e.max
-              );
-              if (chart.yAxis?.[0]) {
-                const y = chart.yAxis[0];
-                let min = range.min;
-                let max = range.max;
-                if (State.isNumericMetric() && min < 0) min = 0;
-                if (max <= min) max = min + (min > 0 ? min * 0.1 : 100);
-                y.setExtremes(min, max, true, {
-                  duration: 300,
-                  easing: 'easeOutQuart',
-                });
-              }
-            },
-          },
-        };
-
     State.chart = Highcharts.chart('videoChart', {
       chart: {
         type: isHourly ? 'line' : 'area',
@@ -1920,9 +2137,17 @@ const Charts = {
         plotBackgroundColor: cardBg,
         plotBorderColor: Dom.getCssVar('--border-color'),
         plotBorderWidth: 1,
-        zoomType: isHourly ? undefined : 'x',
-        panning: { enabled: !isHourly, type: 'x' },
+        zoomType: 'x',
+        panning: { enabled: true, type: 'x' },
         panKey: 'shift',
+        resetZoomButton: {
+          position: {
+            align: 'right',
+            verticalAlign: 'top',
+            x: -10,
+            y: 10,
+          },
+        },
         animation: shouldAnimate
           ? { duration: 600, easing: 'easeOutQuart' }
           : false,
@@ -1961,7 +2186,11 @@ const Charts = {
             }
           },
           redraw: function () {
+            const customBounds = YAxisBounds.getCurrentBounds();
+            const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
             if (
+              !customBounds &&
+              !isGainsMode &&
               State.isNumericMetric() &&
               this.yAxis?.[0] &&
               this.yAxis[0].min < 0 &&
@@ -2002,7 +2231,7 @@ const Charts = {
           dashStyle: 'Dash',
           zIndex: 2,
         },
-        ...xAxisWithRangeSync,
+        ...ChartBuilder.xAxis(isHourly),
       },
       yAxis: ChartBuilder.yAxis(yRange, isHourly),
       series: seriesConfig,
@@ -2041,7 +2270,12 @@ const Charts = {
                 const padding = Math.max(range * 0.05, 1);
                 let calcMin = minVal - padding;
                 const calcMax = maxVal + padding;
-                if (calcMin < 0 && minVal >= 0) calcMin = 0;
+                const customBounds = YAxisBounds.getCurrentBounds();
+                if (!customBounds) {
+                  const isGainsMode =
+                    State.isGainsMode || State.isHourlyGainsMode;
+                  if (!isGainsMode && calcMin < 0 && minVal >= 0) calcMin = 0;
+                }
                 chart.yAxis[0].setExtremes(calcMin, calcMax, true, true);
               }
             }, 10);
@@ -5257,11 +5491,21 @@ const ChartModeDropdown = {
         CustomDatePicker.datePickerButton.classList.add('show');
         CustomDatePicker.datePickerButton.style.display = 'flex';
       }
+      YAxisBounds.createButton();
+      YAxisBounds.show();
     } else {
       if (CustomDatePicker.datePickerButton) {
         CustomDatePicker.datePickerButton.classList.remove('show');
         CustomDatePicker.datePickerButton.style.display = 'none';
       }
+      YAxisBounds.hide();
+    }
+    const chartContainer = document.querySelector('.chart-container');
+    const videoToggleVisible = !!document.querySelector(
+      '.video-type-toggle.show'
+    );
+    if (chartContainer) {
+      chartContainer.classList.toggle('no-video-toggle', !videoToggleVisible);
     }
   },
 
@@ -5490,6 +5734,12 @@ const CustomDatePicker = {
 
     const applyBtn = document.getElementById('applyDatePicker');
     applyBtn.addEventListener('click', () => this.applyDateRange());
+    this.modal.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.applyDateRange();
+      }
+    });
 
     return this.modal;
   },

@@ -1036,10 +1036,42 @@ const DataProcessor = {
       const values = State.processedData.series[metric];
       const timestamps = State.processedData.timestamps;
       points = this.processGains(timestamps, values);
+
+      if (Array.isArray(points) && points.length > 0) {
+        const first2025Index = points.findIndex(([ts]) => {
+          const dt = luxon.DateTime.fromMillis(ts, {
+            zone: 'America/New_York',
+          });
+          return dt.year === 2025;
+        });
+        if (first2025Index !== -1) {
+          const first2025Ts = points[first2025Index][0];
+          const isZero = points[first2025Index][1] === 0;
+          if (!isZero) {
+            points = points.filter(([ts]) => ts !== first2025Ts);
+          }
+        }
+      }
     } else if (State.isGainsMode && metric !== 'uploads') {
       const values = State.processedData.series[metric];
       const timestamps = State.processedData.timestamps;
       points = this.processDailyGains(timestamps, values);
+
+      if (Array.isArray(points) && points.length > 0) {
+        const first2025Index = points.findIndex(([ts]) => {
+          const dt = luxon.DateTime.fromMillis(ts, {
+            zone: 'America/New_York',
+          });
+          return dt.year === 2025;
+        });
+        if (first2025Index !== -1) {
+          const first2025Ts = points[first2025Index][0];
+          const isZero = points[first2025Index][1] === 0;
+          if (!isZero) {
+            points = points.filter(([ts]) => ts !== first2025Ts);
+          }
+        }
+      }
     } else {
       points = this.seriesPointsForChart(metric);
       if (Array.isArray(points) && points.length > 0) {
@@ -1699,7 +1731,6 @@ const ChartBuilder = {
           fontWeight: '500',
         },
         autoRotation: [-10, -20, -30, -45],
-        overflow: 'justify',
       },
       tickPositioner: function () {
         const dataMin = this.dataMin;
@@ -1958,7 +1989,7 @@ const Charts = {
     if (State.chart) {
       try {
         State.chart.destroy();
-      } catch {}
+      } catch (e) {}
       State.chart = null;
     }
   },
@@ -2010,12 +2041,15 @@ const Charts = {
         });
       }
       if (values.length === 0) return { min: 0, max: 100 };
+
       const minVal = Math.min(...values);
       const maxVal = Math.max(...values);
       const range = maxVal - minVal;
       const padding = Math.max(range * 0.05, 1);
+
       let min = minVal - padding;
       let max = maxVal + padding;
+
       const customBounds = YAxisBounds.getCurrentBounds();
       if (!customBounds) {
         const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
@@ -2023,18 +2057,26 @@ const Charts = {
           min = 0;
         }
       }
-      if (max <= min) max = min + (min > 0 ? min * 0.1 : 100);
+
+      if (max <= min) {
+        max = min + (min > 0 ? min * 0.1 : 100);
+      }
+
       return { min, max };
     };
 
-    let seriesConfig, yRange;
+    let seriesConfig;
+    let yRange;
 
     if (isHourly) {
       seriesConfig = ChartBuilder.hourlySeries(State.hourlyData);
+
       const allValues = [];
       seriesConfig.forEach(s => {
         s.data.forEach(point => {
-          if (point && point[1] != null) allValues.push(point[1]);
+          if (point && point[1] != null && isFinite(point[1])) {
+            allValues.push(point[1]);
+          }
         });
       });
 
@@ -2046,33 +2088,45 @@ const Charts = {
         const range = maxVal - minVal;
         const padding = Math.max(range * 0.05, 1);
         let calcMin = minVal - padding;
-        const calcMax = maxVal + padding;
+        let calcMax = maxVal + padding;
+
         const customBounds = YAxisBounds.getCurrentBounds();
         if (!customBounds) {
           const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
-          if (!isGainsMode && calcMin < 0 && minVal >= 0) calcMin = 0;
+          if (!isGainsMode && calcMin < 0 && minVal >= 0) {
+            calcMin = 0;
+          }
         }
+        if (calcMax <= calcMin) {
+          calcMax = calcMin + (calcMin > 0 ? calcMin * 0.1 : 100);
+        }
+
         yRange = { min: calcMin, max: calcMax };
       }
     } else {
       seriesConfig = ChartBuilder.series();
-
       const initialVisible = seriesConfig.filter(s => s.visible !== false);
       yRange = computeRangeFromSeries(initialVisible);
     }
 
     const customBounds = YAxisBounds.getCurrentBounds();
     if (customBounds) {
-      if (customBounds.min !== null) yRange.min = customBounds.min;
-      if (customBounds.max !== null) yRange.max = customBounds.max;
+      if (customBounds.min !== null && customBounds.min !== undefined) {
+        yRange.min = customBounds.min;
+      }
+      if (customBounds.max !== null && customBounds.max !== undefined) {
+        yRange.max = customBounds.max;
+      }
     }
 
-    if (!State.isChartReady) State.pendingYAxisRange = yRange;
+    if (!State.isChartReady) {
+      State.pendingYAxisRange = yRange;
+    }
 
-    let chartTitle;
     const metricName =
       State.getMetricName().charAt(0).toUpperCase() +
       State.getMetricName().slice(1);
+
     const modeLabel =
       State.customDateRangeLabel ||
       (Config.chartModes[State.currentChartMode] &&
@@ -2086,6 +2140,7 @@ const Charts = {
         ? ' • Longform'
         : '';
 
+    let chartTitle;
     if (isHourly) {
       const baseTitle = `Hourly ${metricName} Gains`;
       chartTitle = modeLabel
@@ -2133,7 +2188,10 @@ const Charts = {
       chart: {
         type: isHourly ? 'line' : 'area',
         backgroundColor: cardBg,
-        style: { fontFamily: "'Poppins', sans-serif", fontSize: '14px' },
+        style: {
+          fontFamily: "'Poppins', sans-serif",
+          fontSize: '14px',
+        },
         plotBackgroundColor: cardBg,
         plotBorderColor: Dom.getCssVar('--border-color'),
         plotBorderWidth: 1,
@@ -2155,12 +2213,15 @@ const Charts = {
           ...ChartBuilder.events(),
           load: function () {
             State.isChartReady = true;
+
             if (State.pendingYAxisRange) {
               const { min, max } = State.pendingYAxisRange;
-              if (this.yAxis?.[0])
+              if (this.yAxis?.[0]) {
                 this.yAxis[0].setExtremes(min, max, true, false);
+              }
               State.pendingYAxisRange = null;
             }
+
             if (!State.isHourlyMode && State.persistedRange) {
               try {
                 const xa = this.xAxis?.[0];
@@ -2176,7 +2237,7 @@ const Charts = {
                     this.redraw(false);
                   }
                 }
-              } catch {}
+              } catch (e) {}
             }
           },
           render: function () {
@@ -2184,10 +2245,29 @@ const Charts = {
               const centreX = this.chartWidth / 2 - this.plotLeft;
               this.xAxis[0].axisTitle.attr({ x: centreX + 105 });
             }
+
+            try {
+              const axis = this.xAxis && this.xAxis[0];
+              const labelGroup =
+                axis && axis.labelGroup && axis.labelGroup.element;
+              if (!labelGroup) return;
+
+              const texts = labelGroup.querySelectorAll('text');
+              texts.forEach(node => {
+                const tr = node.getAttribute('transform') || '';
+                const xAttr = node.getAttribute('x') || '';
+                if (tr === 'translate(0,0)' && xAttr === '0') {
+                  if (node.parentNode) {
+                    node.parentNode.removeChild(node);
+                  }
+                }
+              });
+            } catch (e) {}
           },
           redraw: function () {
             const customBounds = YAxisBounds.getCurrentBounds();
             const isGainsMode = State.isGainsMode || State.isHourlyGainsMode;
+
             if (
               !customBounds &&
               !isGainsMode &&
@@ -2207,11 +2287,13 @@ const Charts = {
         spacingRight: State.isMobile() ? 10 : 25,
         borderRadius: 12,
       },
+
       boost: {
         enabled: maxPointsVisible > 2500,
         useGPUTranslations: true,
         usePreAllocated: true,
       },
+
       title: {
         text: chartTitle,
         style: {
@@ -2223,7 +2305,9 @@ const Charts = {
         margin: State.isMobile() ? 15 : 30,
         align: 'center',
       },
+
       credits: { enabled: false },
+
       xAxis: {
         crosshair: {
           color: Dom.getCssVar('--border-color'),
@@ -2233,8 +2317,11 @@ const Charts = {
         },
         ...ChartBuilder.xAxis(isHourly),
       },
+
       yAxis: ChartBuilder.yAxis(yRange, isHourly),
+
       series: seriesConfig,
+
       legend: {
         enabled:
           isHourly || CombinedMetricsFilter?.state?.filterMode === 'overlay',
@@ -2259,23 +2346,34 @@ const Charts = {
               chart.series.forEach(series => {
                 if (series.visible || series === event.target) {
                   series.data.forEach(point => {
-                    if (point && point.y != null) allValues.push(point.y);
+                    if (point && point.y != null && isFinite(point.y)) {
+                      allValues.push(point.y);
+                    }
                   });
                 }
               });
+
               if (allValues.length > 0) {
                 const minVal = Math.min(...allValues);
                 const maxVal = Math.max(...allValues);
                 const range = maxVal - minVal;
                 const padding = Math.max(range * 0.05, 1);
                 let calcMin = minVal - padding;
-                const calcMax = maxVal + padding;
+                let calcMax = maxVal + padding;
+
                 const customBounds = YAxisBounds.getCurrentBounds();
                 if (!customBounds) {
                   const isGainsMode =
                     State.isGainsMode || State.isHourlyGainsMode;
-                  if (!isGainsMode && calcMin < 0 && minVal >= 0) calcMin = 0;
+                  if (!isGainsMode && calcMin < 0 && minVal >= 0) {
+                    calcMin = 0;
+                  }
                 }
+
+                if (calcMax <= calcMin) {
+                  calcMax = calcMin + (calcMin > 0 ? calcMin * 0.1 : 100);
+                }
+
                 chart.yAxis[0].setExtremes(calcMin, calcMax, true, true);
               }
             }, 10);
@@ -2289,7 +2387,9 @@ const Charts = {
         borderRadius: 8,
         itemDistance: State.isMobile() ? 10 : 20,
       },
+
       tooltip: ChartBuilder.tooltip(isHourly),
+
       plotOptions: {
         series: {
           animation: shouldAnimate
@@ -2322,8 +2422,11 @@ const Charts = {
           lineWidth: State.isMobile() ? 2.5 : 3.5,
           threshold: null,
         },
-        line: { lineWidth: State.isMobile() ? 2 : 2.5 },
+        line: {
+          lineWidth: State.isMobile() ? 2 : 2.5,
+        },
       },
+
       responsive: {
         rules: [
           {
@@ -2335,7 +2438,10 @@ const Charts = {
                 spacingLeft: 10,
                 spacingRight: 10,
               },
-              title: { style: { fontSize: '16px' }, margin: 15 },
+              title: {
+                style: { fontSize: '16px' },
+                margin: 15,
+              },
               legend: {
                 itemStyle: { fontSize: '10px' },
                 itemDistance: 8,
@@ -2368,7 +2474,7 @@ const Charts = {
             State.chart.redraw(false);
           }
         }
-      } catch {}
+      } catch (e) {}
     }
 
     await ChartModeDropdown.refresh();

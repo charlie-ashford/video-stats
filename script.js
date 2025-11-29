@@ -1186,6 +1186,10 @@ const YAxisBounds = {
     if (this.button) {
       this.button.classList.add('show');
       this.button.style.display = 'flex';
+
+      if (this.state.isCustom) {
+        this.button.classList.add('active');
+      }
     }
   },
 
@@ -1273,6 +1277,10 @@ const YAxisBounds = {
     minInput.value = '';
     maxInput.value = '';
 
+    if (this.button) {
+      this.button.classList.remove('active');
+    }
+
     if (State.chart?.yAxis?.[0]) {
       const series = State.chart.series.filter(s => s.visible);
       const allValues = [];
@@ -1346,6 +1354,12 @@ const YAxisBounds = {
     this.state.customMin = minVal;
     this.state.customMax = maxVal;
     this.state.isCustom = minVal !== null || maxVal !== null;
+
+    if (this.button && this.state.isCustom) {
+      this.button.classList.add('active');
+    } else if (this.button) {
+      this.button.classList.remove('active');
+    }
 
     if (State.chart?.yAxis?.[0]) {
       State.chart.yAxis[0].setExtremes(newMin, newMax, true, true);
@@ -1770,20 +1784,31 @@ const ChartBuilder = {
           ) {
             State.persistedRange = { xMin: e.min, xMax: e.max };
           }
+
+          const customBounds = YAxisBounds.getCurrentBounds();
+          if (customBounds) return;
+
           if (!State.isMobile() && State.isChartReady && this.chart?.series) {
-            const activeSeries = this.chart.series[State.selectedMetricIndex];
-            if (activeSeries?.data?.length > 0) {
-              const range = DataProcessor.calcYRange(
-                activeSeries.data,
-                e.min || this.dataMin,
-                e.max || this.dataMax
-              );
-              if (this.chart.yAxis?.[0]) {
-                this.chart.yAxis[0].setExtremes(range.min, range.max, true, {
-                  duration: 300,
-                  easing: 'easeOutQuart',
-                });
-              }
+            const xMin = e.min ?? this.dataMin;
+            const xMax = e.max ?? this.dataMax;
+
+            const visiblePoints = [];
+            this.chart.series.forEach(series => {
+              if (!series.visible) return;
+              series.data.forEach(p => {
+                const x = p.x;
+                if (typeof x !== 'number') return;
+                if (x < xMin || x > xMax) return;
+                visiblePoints.push(p);
+              });
+            });
+
+            if (visiblePoints.length > 0 && this.chart.yAxis?.[0]) {
+              const range = DataProcessor.calcYRange(visiblePoints, xMin, xMax);
+              this.chart.yAxis[0].setExtremes(range.min, range.max, true, {
+                duration: 300,
+                easing: 'easeOutQuart',
+              });
             }
           }
         },
@@ -4284,18 +4309,25 @@ const VideoTypeToggle = {
 
     const current = this.getState(this.state);
     const next = this.getNextState(this.state);
+
     this.button.innerHTML = `<i class="fas ${this.icons[next]}"></i>`;
     this.button.title = `Switch to ${this.titles[next]}`;
 
-    if (current === 'overlay') {
-      this.button.classList.add('active');
-    } else {
-      this.button.classList.remove('active');
-    }
+    this.button.classList.toggle('active', current !== 'all');
+
+    this.button.classList.toggle('overlay-mode', current === 'overlay');
   },
 
   async applyFilter() {
     if (!CombinedMetricsFilter) return;
+    if (YAxisBounds && YAxisBounds.state.isCustom) {
+      YAxisBounds.state.customMin = null;
+      YAxisBounds.state.customMax = null;
+      YAxisBounds.state.isCustom = false;
+      if (YAxisBounds.button) {
+        YAxisBounds.button.classList.remove('active');
+      }
+    }
     await CombinedMetricsFilter.setFilterMode(this.state, { refresh: true });
   },
 
@@ -4304,6 +4336,10 @@ const VideoTypeToggle = {
     if (this.button) {
       this.button.classList.add('show');
       this.button.style.display = 'flex';
+
+      const current = this.getState(this.state);
+      this.button.classList.toggle('active', current !== 'all');
+      this.button.classList.toggle('overlay-mode', current === 'overlay');
     }
   },
 
@@ -4682,6 +4718,9 @@ const Theme = {
           const newCardBg = Dom.getCssVar('--card-background-color');
           const newBorderColor = Dom.getCssVar('--border-color');
           const newTextColor = Dom.getCssVar('--text-color');
+          const newHoverColor = Dom.getCssVar('--hover-text-color');
+          const newMutedColor = Dom.getCssVar('--muted-text-color');
+
           State.chart.update(
             {
               chart: {
@@ -4691,6 +4730,12 @@ const Theme = {
                 animation: false,
               },
               title: { style: { color: newTextColor } },
+              legend: {
+                backgroundColor: newCardBg,
+                itemStyle: { color: newTextColor },
+                itemHoverStyle: { color: newHoverColor },
+                itemHiddenStyle: { color: newMutedColor },
+              },
               xAxis: {
                 title: { style: { color: newTextColor } },
                 labels: { style: { color: newTextColor } },
@@ -4707,7 +4752,6 @@ const Theme = {
                 tickColor: newBorderColor,
                 minorGridLineColor: newBorderColor,
               },
-              legend: { itemStyle: { color: newTextColor } },
             },
             true
           );
@@ -5596,6 +5640,13 @@ const ChartModeDropdown = {
       if (CustomDatePicker.datePickerButton) {
         CustomDatePicker.datePickerButton.classList.add('show');
         CustomDatePicker.datePickerButton.style.display = 'flex';
+        const hasCustomRange =
+          (State.customDateRange.start && State.customDateRange.end) ||
+          (State.hourlyDateRange.start && State.hourlyDateRange.end);
+        CustomDatePicker.datePickerButton.classList.toggle(
+          'active',
+          !!hasCustomRange
+        );
       }
       YAxisBounds.createButton();
       YAxisBounds.show();
@@ -5948,6 +5999,10 @@ const CustomDatePicker = {
         State.customDateRangeLabel = `${start.toFormat(
           'MM/dd'
         )} - ${end.toFormat('MM/dd')}`;
+
+        if (this.datePickerButton) {
+          this.datePickerButton.classList.add('active');
+        }
       } else {
         State.customDateRange.start = startDate;
         State.customDateRange.end = endDate;
@@ -5962,6 +6017,10 @@ const CustomDatePicker = {
           'MM/dd'
         )} - ${end.toFormat('MM/dd')}`;
         await this.loadCustomRangeData();
+
+        if (this.datePickerButton) {
+          this.datePickerButton.classList.add('active');
+        }
       }
       await Charts.create();
     } catch (error) {
@@ -5979,6 +6038,10 @@ const CustomDatePicker = {
         State.customDateRange = { start: null, end: null };
       }
       State.customDateRangeLabel = null;
+
+      if (this.datePickerButton) {
+        this.datePickerButton.classList.remove('active');
+      }
     }
   },
 
@@ -6022,6 +6085,14 @@ const CustomDatePicker = {
 
   show() {
     if (!this.datePickerButton) this.createDatePickerButton();
+
+    const hasCustomRange =
+      (State.customDateRange.start && State.customDateRange.end) ||
+      (State.hourlyDateRange.start && State.hourlyDateRange.end);
+
+    if (this.datePickerButton && hasCustomRange) {
+      this.datePickerButton.classList.add('active');
+    }
   },
 
   hide() {
@@ -6032,7 +6103,10 @@ const CustomDatePicker = {
     State.hourlyDateRange = { start: null, end: null };
     State.customDateRange = { start: null, end: null };
     State.customDateRangeLabel = null;
-    if (this.datePickerButton) this.datePickerButton.classList.remove('show');
+
+    if (this.datePickerButton) {
+      this.datePickerButton.classList.remove('active', 'show');
+    }
   },
 };
 

@@ -1936,11 +1936,38 @@ const Charts = {
                 this.yAxis[0].setExtremes(min, max, true, false);
               State.pendingYAxisRange = null;
             }
+            if (!State.isHourlyMode && State.persistedRange) {
+              try {
+                const xa = this.xAxis?.[0];
+                if (
+                  xa &&
+                  Number.isFinite(xa.dataMin) &&
+                  Number.isFinite(xa.dataMax)
+                ) {
+                  const xMin = Math.max(xa.dataMin, State.persistedRange.xMin);
+                  const xMax = Math.min(xa.dataMax, State.persistedRange.xMax);
+                  if (xMax > xMin) {
+                    xa.setExtremes(xMin, xMax, false, false);
+                    this.redraw(false);
+                  }
+                }
+              } catch {}
+            }
+          },
+          render: function () {
+            if (this.xAxis?.[0]?.axisTitle) {
+              const centreX = this.chartWidth / 2 - this.plotLeft;
+              this.xAxis[0].axisTitle.attr({ x: centreX + 105 });
+            }
           },
           redraw: function () {
-            const y = this.yAxis?.[0];
-            if (State.isNumericMetric() && y && y.min < 0 && y.dataMin >= 0) {
-              y.setExtremes(0, null, false, false);
+            if (
+              State.isNumericMetric() &&
+              this.yAxis?.[0] &&
+              this.yAxis[0].min < 0 &&
+              this.yAxis[0].dataMin >= 0
+            ) {
+              this.yAxis[0].setExtremes(0, null, false, false);
             }
           },
         },
@@ -1980,7 +2007,8 @@ const Charts = {
       yAxis: ChartBuilder.yAxis(yRange, isHourly),
       series: seriesConfig,
       legend: {
-        enabled: isHourly,
+        enabled:
+          isHourly || CombinedMetricsFilter?.state?.filterMode === 'overlay',
         itemStyle: {
           color: textColor,
           fontWeight: '500',
@@ -4689,7 +4717,7 @@ const ChannelVideos = {
   async load(channelId) {
     State.isVideosGridView = true;
     Dom.setMainView('videos');
-	  CombinedMetricsFilter.hide();
+    CombinedMetricsFilter.hide();
 
     const headerTitle = document.querySelector('header h1');
     if (headerTitle) headerTitle.textContent = 'Channel Videos';

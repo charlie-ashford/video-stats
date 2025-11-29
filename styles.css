@@ -1063,6 +1063,46 @@ header h1 {
   font-size: 1.1rem;
 }
 
+.video-type-toggle {
+  position: absolute;
+  top: 1.5rem;
+  left: 4.5rem;
+  background-color: var(--card-background-color);
+  color: var(--text-color);
+  border: 1.5px solid var(--border-color);
+  padding: 0.5rem;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.video-type-toggle.show {
+  display: flex !important;
+}
+
+.video-type-toggle:hover {
+  background-color: var(--hover-card-background);
+  border-color: var(--hover-border-color);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+}
+
+.video-type-toggle.active {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #ffffff;
+}
+
+.video-type-toggle i {
+  font-size: 1.1rem;
+}
+
 .date-picker-modal {
   display: none;
   position: fixed;
@@ -2511,6 +2551,12 @@ footer .fa-heart {
     left: 1rem;
   }
 
+  .video-type-toggle {
+    top: auto;
+    bottom: 1rem;
+    left: 4rem;
+  }
+
   .videos-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.85rem;
@@ -2924,6 +2970,17 @@ footer .fa-heart {
   }
 
   .custom-date-picker-button i {
+    font-size: 1rem;
+  }
+
+  .video-type-toggle {
+    width: 36px;
+    height: 36px;
+    bottom: 0.85rem;
+    left: 3.5rem;
+  }
+
+  .video-type-toggle i {
     font-size: 1rem;
   }
 

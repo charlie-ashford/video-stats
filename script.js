@@ -1125,6 +1125,42 @@ const ChartBuilder = {
   },
 
   series() {
+    if (CombinedMetricsFilter?.state?.filterMode === 'overlay') {
+      const metricKey = State.getMetricName();
+      const overlay = CombinedMetricsFilter.getOverlaySeries(metricKey);
+      if (!overlay || (!overlay.short?.length && !overlay.long?.length)) {
+        return [];
+      }
+      const shortColor = '#FF6B6B';
+      const longColor = '#4ECDC4';
+      return [
+        {
+          name:
+            State.isGainsMode || State.isHourlyGainsMode
+              ? 'Shorts Gains'
+              : 'Shorts',
+          data: overlay.short || [],
+          visible: true,
+          color: shortColor,
+          fillColor: this.gradient(shortColor),
+          lineWidth: State.isMobile() ? 2 : 3,
+          boostThreshold: 2500,
+        },
+        {
+          name:
+            State.isGainsMode || State.isHourlyGainsMode
+              ? 'Longform Gains'
+              : 'Longform',
+          data: overlay.long || [],
+          visible: true,
+          color: longColor,
+          fillColor: this.gradient(longColor),
+          lineWidth: State.isMobile() ? 2 : 3,
+          boostThreshold: 2500,
+        },
+      ];
+    }
+
     const configs = [
       {
         name: 'Views',
@@ -1714,6 +1750,34 @@ const Charts = {
       else chartContainer.classList.remove('hourly-mode');
     }
 
+    const computeRangeFromSeries = (seriesList, xMin = null, xMax = null) => {
+      const values = [];
+      if (Array.isArray(seriesList)) {
+        seriesList.forEach(s => {
+          if (!s || !Array.isArray(s.data)) return;
+          s.data.forEach(pt => {
+            const x = Array.isArray(pt) ? pt[0] : pt?.x;
+            const y = Array.isArray(pt) ? pt[1] : pt?.y;
+            if (y == null || !isFinite(y)) return;
+            if (xMin != null && xMax != null) {
+              if (x < xMin || x > xMax) return;
+            }
+            values.push(y);
+          });
+        });
+      }
+      if (values.length === 0) return { min: 0, max: 100 };
+      const minVal = Math.min(...values);
+      const maxVal = Math.max(...values);
+      const range = maxVal - minVal;
+      const padding = Math.max(range * 0.05, 1);
+      let min = minVal - padding;
+      let max = maxVal + padding;
+      if (State.isNumericMetric() && min < 0 && minVal >= 0) min = 0;
+      if (max <= min) max = min + (min > 0 ? min * 0.1 : 100);
+      return { min, max };
+    };
+
     let seriesConfig, yRange;
 
     if (isHourly) {
@@ -1739,54 +1803,114 @@ const Charts = {
       }
     } else {
       seriesConfig = ChartBuilder.series();
-      const currentSeries = DataProcessor.getCurrentSeries();
-      yRange = DataProcessor.calcYRange(currentSeries);
+
+      const initialVisible = seriesConfig.filter(s => s.visible !== false);
+      yRange = computeRangeFromSeries(initialVisible);
     }
 
     if (!State.isChartReady) State.pendingYAxisRange = yRange;
 
     let chartTitle;
+    const metricName =
+      State.getMetricName().charAt(0).toUpperCase() +
+      State.getMetricName().slice(1);
+    const modeLabel =
+      State.customDateRangeLabel ||
+      (Config.chartModes[State.currentChartMode] &&
+        Config.chartModes[State.currentChartMode].label) ||
+      '';
+
+    const filterTypeLabel =
+      CombinedMetricsFilter?.state?.filterMode === 'short'
+        ? ' • Shorts'
+        : CombinedMetricsFilter?.state?.filterMode === 'long'
+        ? ' • Longform'
+        : '';
+
     if (isHourly) {
-      const baseTitle = `Hourly ${
-        State.getMetricName().charAt(0).toUpperCase() +
-        State.getMetricName().slice(1)
-      } Gains`;
-      chartTitle = State.customDateRangeLabel
-        ? `${baseTitle} - ${State.customDateRangeLabel}`
-        : baseTitle;
-    } else if (State.isHourlyGainsMode) {
-      const metricName =
-        State.getMetricName().charAt(0).toUpperCase() +
-        State.getMetricName().slice(1);
       const baseTitle = `Hourly ${metricName} Gains`;
-      const modeLabel =
-        State.customDateRangeLabel ||
-        Config.chartModes[State.currentChartMode].label;
-      chartTitle = `${baseTitle} - ${modeLabel}`;
+      chartTitle = modeLabel
+        ? `${baseTitle}${filterTypeLabel} - ${modeLabel}`
+        : `${baseTitle}${filterTypeLabel}`;
+    } else if (State.isHourlyGainsMode) {
+      const baseTitle = `Hourly ${metricName} Gains`;
+      chartTitle = modeLabel
+        ? `${baseTitle}${filterTypeLabel} - ${modeLabel}`
+        : `${baseTitle}${filterTypeLabel}`;
     } else if (State.isGainsMode) {
-      const metricName =
-        State.getMetricName().charAt(0).toUpperCase() +
-        State.getMetricName().slice(1);
       const baseTitle = `Daily ${metricName} Gains`;
-      const modeLabel =
-        State.customDateRangeLabel ||
-        Config.chartModes[State.currentChartMode].label;
-      chartTitle = `${baseTitle} - ${modeLabel}`;
+      chartTitle = modeLabel
+        ? `${baseTitle}${filterTypeLabel} - ${modeLabel}`
+        : `${baseTitle}${filterTypeLabel}`;
+    } else if (CombinedMetricsFilter?.state?.filterMode === 'overlay') {
+      if (State.isHourlyGainsMode) {
+        chartTitle = `Hourly ${metricName} Gains - Short vs Long${
+          modeLabel ? ` • ${modeLabel}` : ''
+        }`;
+      } else if (State.isGainsMode) {
+        chartTitle = `Daily ${metricName} Gains - Short vs Long${
+          modeLabel ? ` • ${modeLabel}` : ''
+        }`;
+      } else {
+        chartTitle = `${metricName} - Short vs Long${
+          modeLabel ? ` • ${modeLabel}` : ''
+        }`;
+      }
     } else {
-      const metricName =
-        seriesConfig[State.selectedMetricIndex]?.name || 'Chart';
-      const modeLabel =
-        State.customDateRangeLabel ||
-        Config.chartModes[State.currentChartMode].label;
-      chartTitle = `${metricName} - ${modeLabel}`;
+      const label = seriesConfig[State.selectedMetricIndex]?.name || metricName;
+      chartTitle = modeLabel
+        ? `${label}${filterTypeLabel} - ${modeLabel}`
+        : `${label}${filterTypeLabel}`;
     }
 
     const shouldAnimate = animate && !State.isMobile();
-    const visibleSeries = seriesConfig.filter(s => s.visible);
+    const visibleSeries = seriesConfig.filter(s => s.visible !== false);
     const maxPointsVisible = Math.max(
       0,
       ...visibleSeries.map(s => (s.data ? s.data.length : 0))
     );
+
+    const baseXAxis = ChartBuilder.xAxis(isHourly);
+    const xAxisWithRangeSync = isHourly
+      ? baseXAxis
+      : {
+          ...baseXAxis,
+          events: {
+            ...(baseXAxis.events || {}),
+            afterSetExtremes: function (e) {
+              if (
+                typeof e.min === 'number' &&
+                typeof e.max === 'number' &&
+                e.max > e.min
+              ) {
+                State.persistedRange = { xMin: e.min, xMax: e.max };
+              }
+              const chart = this.chart;
+              const seriesList = chart.series.filter(s => s.visible);
+              const range = computeRangeFromSeries(
+                seriesList.map(s => ({
+                  data:
+                    s.options.data ||
+                    s.userOptions.data ||
+                    s.data?.map(p => [p.x, p.y]),
+                })),
+                e.min,
+                e.max
+              );
+              if (chart.yAxis?.[0]) {
+                const y = chart.yAxis[0];
+                let min = range.min;
+                let max = range.max;
+                if (State.isNumericMetric() && min < 0) min = 0;
+                if (max <= min) max = min + (min > 0 ? min * 0.1 : 100);
+                y.setExtremes(min, max, true, {
+                  duration: 300,
+                  easing: 'easeOutQuart',
+                });
+              }
+            },
+          },
+        };
 
     State.chart = Highcharts.chart('videoChart', {
       chart: {
@@ -1811,6 +1935,12 @@ const Charts = {
               if (this.yAxis?.[0])
                 this.yAxis[0].setExtremes(min, max, true, false);
               State.pendingYAxisRange = null;
+            }
+          },
+          redraw: function () {
+            const y = this.yAxis?.[0];
+            if (State.isNumericMetric() && y && y.min < 0 && y.dataMin >= 0) {
+              y.setExtremes(0, null, false, false);
             }
           },
         },
@@ -1845,7 +1975,7 @@ const Charts = {
           dashStyle: 'Dash',
           zIndex: 2,
         },
-        ...ChartBuilder.xAxis(isHourly),
+        ...xAxisWithRangeSync,
       },
       yAxis: ChartBuilder.yAxis(yRange, isHourly),
       series: seriesConfig,
@@ -3726,6 +3856,367 @@ const Export = {
   },
 };
 
+const VideoTypeToggle = {
+  button: null,
+  state: 'all',
+
+  icons: {
+    all: 'fa-layer-group',
+    long: 'fa-film',
+    short: 'fa-bolt',
+    overlay: 'fa-object-group',
+  },
+
+  titles: {
+    all: 'All Videos',
+    long: 'Longform Only',
+    short: 'Shorts Only',
+    overlay: 'Overlay Comparison',
+  },
+
+  getState(from = this.state) {
+    return from;
+  },
+
+  getNextState(from = this.state) {
+    const order = ['all', 'long', 'short', 'overlay'];
+    const i = order.indexOf(from);
+    return order[(i + 1) % order.length];
+  },
+
+  create() {
+    if (this.button) return this.button;
+
+    const chartContainer = document.querySelector('.chart-container');
+    if (!chartContainer) return null;
+
+    this.button = Dom.create('button', 'video-type-toggle');
+
+    this.button.addEventListener('click', () => {
+      this.cycle();
+    });
+
+    const chart = Dom.get('videoChart');
+    if (chart && chart.parentElement) {
+      chart.parentElement.insertBefore(this.button, chart);
+    }
+
+    this.updateIcon();
+    return this.button;
+  },
+
+  async cycle() {
+    this.state = this.getNextState(this.state);
+    this.updateIcon();
+    await this.applyFilter();
+  },
+
+  updateIcon() {
+    if (!this.button) return;
+
+    const current = this.getState(this.state);
+    const next = this.getNextState(this.state);
+    this.button.innerHTML = `<i class="fas ${this.icons[next]}"></i>`;
+    this.button.title = `Switch to ${this.titles[next]}`;
+
+    if (current === 'overlay') {
+      this.button.classList.add('active');
+    } else {
+      this.button.classList.remove('active');
+    }
+  },
+
+  async applyFilter() {
+    if (!CombinedMetricsFilter) return;
+    await CombinedMetricsFilter.setFilterMode(this.state, { refresh: true });
+  },
+
+  show() {
+    if (!this.button) this.create();
+    if (this.button) {
+      this.button.classList.add('show');
+      this.button.style.display = 'flex';
+    }
+  },
+
+  hide() {
+    if (this.button) {
+      this.button.classList.remove('show');
+      this.button.style.display = 'none';
+    }
+  },
+
+  reset() {
+    this.state = 'all';
+    this.updateIcon();
+  },
+};
+
+const CombinedMetricsFilter = {
+  state: {
+    filterMode: 'all',
+    shortRaw: null,
+    longRaw: null,
+    isFetching: false,
+  },
+
+  async setFilterMode(mode, { refresh = false } = {}) {
+    if (mode !== this.state.filterMode) {
+      this.state.filterMode = mode;
+      VideoTypeToggle.state = mode;
+      VideoTypeToggle.updateIcon();
+      await this._ensureRawForMode();
+    }
+    if (refresh) {
+      await this.refresh();
+    }
+  },
+
+  async refresh() {
+    await this._ensureRawForMode();
+
+    const container = Dom.get('videoChart');
+    if (container) {
+      container.innerHTML =
+        '<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Updating...</div>';
+    }
+
+    const mode = this.state.filterMode;
+
+    if (mode === 'overlay') {
+      const merged = this._mergeForCombinedTable(
+        this.state.shortRaw || [],
+        this.state.longRaw || []
+      );
+      State.rawData = merged;
+      State._dailyCache = DataProcessor.processDaily(
+        merged,
+        !!merged[0]?.timestamp
+      );
+    } else {
+      State._dailyCache = DataProcessor.processDaily(
+        State.rawData,
+        !!State.rawData?.[0]?.timestamp
+      );
+    }
+
+    await ChartModeDropdown.loadAndDisplayData();
+    Stats.update();
+
+    const dailyData = State._dailyCache || [];
+    const currentData = (State.rawData || [])[State.rawData.length - 1];
+    if (dailyData.length && currentData) {
+      Tables.create(dailyData, currentData, !!currentData.timestamp);
+    }
+  },
+
+  getOverlaySeries(metricKey) {
+    if (this.state.filterMode !== 'overlay') return null;
+    if (
+      !Array.isArray(this.state.shortRaw) ||
+      !Array.isArray(this.state.longRaw)
+    )
+      return null;
+
+    const shortPoints = this._buildSeriesPoints(this.state.shortRaw, metricKey);
+    const longPoints = this._buildSeriesPoints(this.state.longRaw, metricKey);
+
+    return { short: shortPoints, long: longPoints };
+  },
+
+  async _ensureRawForMode() {
+    const mode = this.state.filterMode;
+    const base =
+      State.currentChannel === 'mrbeast'
+        ? Config.api.combinedHistory.mrbeast
+        : Config.api.combinedHistory.byChannel(State.currentChannel);
+
+    if (mode === 'all') {
+      if (!Array.isArray(State.rawData) || State.rawData.length === 0) {
+        State.rawData = await Net.fetchJson(base, {}, 10 * 60 * 1000);
+      }
+      return;
+    }
+
+    if (mode === 'short') {
+      const data = await Net.fetchJson(
+        `${base}?type=short`,
+        {},
+        10 * 60 * 1000
+      );
+      State.rawData = Array.isArray(data) ? data : [];
+      return;
+    }
+
+    if (mode === 'long') {
+      const data = await Net.fetchJson(`${base}?type=long`, {}, 10 * 60 * 1000);
+      State.rawData = Array.isArray(data) ? data : [];
+      return;
+    }
+
+    if (!Array.isArray(this.state.shortRaw) || !this.state.shortRaw.length) {
+      this.state.shortRaw = await Net.fetchJson(
+        `${base}?type=short`,
+        {},
+        10 * 60 * 1000
+      );
+    }
+    if (!Array.isArray(this.state.longRaw) || !this.state.longRaw.length) {
+      this.state.longRaw = await Net.fetchJson(
+        `${base}?type=long`,
+        {},
+        10 * 60 * 1000
+      );
+    }
+    this.state.shortRaw = Array.isArray(this.state.shortRaw)
+      ? this.state.shortRaw
+      : [];
+    this.state.longRaw = Array.isArray(this.state.longRaw)
+      ? this.state.longRaw
+      : [];
+  },
+
+  _mergeForCombinedTable(shortRaw, longRaw) {
+    const map = new Map();
+    const add = entry => {
+      const iso = entry.timestamp || entry.time;
+      if (!iso) return;
+      const existing = map.get(iso) || {
+        timestamp: iso,
+        time: iso,
+        views: 0,
+        likes: 0,
+        comments: 0,
+      };
+      existing.views += entry.views || 0;
+      existing.likes += entry.likes || 0;
+      existing.comments += entry.comments || 0;
+      map.set(iso, existing);
+    };
+    shortRaw.forEach(add);
+    longRaw.forEach(add);
+    return Array.from(map.values()).sort((a, b) => {
+      const ta = new Date(a.timestamp || a.time).getTime();
+      const tb = new Date(b.timestamp || b.time).getTime();
+      return ta - tb;
+    });
+  },
+
+  _filterRawByCurrentRange(raw) {
+    if (!Array.isArray(raw)) return [];
+    const cfg = State.getChartConfig();
+
+    if (State.customDateRange.start && State.customDateRange.end) {
+      const start = luxon.DateTime.fromISO(State.customDateRange.start, {
+        zone: 'America/New_York',
+      }).startOf('day');
+      const end = luxon.DateTime.fromISO(State.customDateRange.end, {
+        zone: 'America/New_York',
+      }).endOf('day');
+      return raw.filter(e => {
+        const iso = e.timestamp || e.time;
+        if (!iso) return false;
+        const dt = luxon.DateTime.fromISO(iso, {
+          zone: 'America/New_York',
+        });
+        return dt >= start && dt <= end;
+      });
+    }
+
+    if (cfg.period !== 'all' && typeof cfg.period === 'number') {
+      const cutoff = luxon.DateTime.now()
+        .setZone('America/New_York')
+        .startOf('day')
+        .minus({ days: cfg.period });
+      return raw.filter(e => {
+        const iso = e.timestamp || e.time;
+        if (!iso) return false;
+        const dt = luxon.DateTime.fromISO(iso, {
+          zone: 'America/New_York',
+        });
+        return dt >= cutoff;
+      });
+    }
+    return raw;
+  },
+
+  _buildSeriesPoints(raw, metricKey) {
+    const filtered = this._filterRawByCurrentRange(raw);
+    if (!filtered.length) return [];
+
+    const processed = DataProcessor.transform(filtered);
+    const ts = processed.timestamps;
+    const vals = processed.series[metricKey];
+    if (!ts || !vals || ts.length !== vals.length) return [];
+
+    if (State.isHourlyGainsMode) {
+      const gains = DataProcessor.processGains(ts, vals);
+      return DataProcessor.downsamplePairs(gains);
+    }
+
+    if (State.isGainsMode) {
+      const dailyRaw = DataProcessor.processDaily(
+        filtered,
+        !!filtered[0]?.timestamp
+      );
+      const gains = [];
+      for (let i = 1; i < dailyRaw.length; i++) {
+        const curr = dailyRaw[i];
+        const prev = dailyRaw[i - 1];
+        const gain = (curr[metricKey] || 0) - (prev[metricKey] || 0);
+        const t = luxon.DateTime.fromISO(curr.timestamp || curr.time, {
+          zone: 'America/New_York',
+        }).toMillis();
+        gains.push([t, gain]);
+      }
+      return DataProcessor.downsamplePairs(gains);
+    }
+
+    const spanDays = DataProcessor.spanInDays(ts);
+    let points;
+    if (spanDays > 90) {
+      points = DataProcessor.dailyFirstPoint(ts, vals);
+    } else {
+      points = ts.map((t, i) => [t, vals[i]]);
+    }
+    return DataProcessor.downsamplePairs(points);
+  },
+
+  async prefetchData() {
+    if (!State.currentChannel) return;
+    const base =
+      State.currentChannel === 'mrbeast'
+        ? Config.api.combinedHistory.mrbeast
+        : Config.api.combinedHistory.byChannel(State.currentChannel);
+    try {
+      const [shortRaw, longRaw] = await Promise.all([
+        Net.fetchJson(`${base}?type=short`, {}, 10 * 60 * 1000),
+        Net.fetchJson(`${base}?type=long`, {}, 10 * 60 * 1000),
+      ]);
+      if (Array.isArray(shortRaw)) this.state.shortRaw = shortRaw;
+      if (Array.isArray(longRaw)) this.state.longRaw = longRaw;
+    } catch (e) {
+      console.error('Error prefetching filter data:', e);
+    }
+  },
+
+  show() {
+    VideoTypeToggle.show();
+  },
+
+  hide() {
+    VideoTypeToggle.hide();
+  },
+
+  reset() {
+    this.state.filterMode = 'all';
+    this.state.shortRaw = null;
+    this.state.longRaw = null;
+    VideoTypeToggle.reset();
+    this.hide();
+  },
+};
+
 const Layout = {
   setupResponsive() {
     const headerControls = document.querySelector('.header-controls');
@@ -3768,7 +4259,7 @@ const Layout = {
             },
             false
           );
-          Charts.redraw();
+          State.chart.redraw(false);
           setTimeout(() => {
             if (State.chart) {
               State.chart.update(
@@ -4145,6 +4636,7 @@ const ChannelTabs = {
     { id: 'gains', icon: 'fa-chart-line', label: 'Video Gains' },
     { id: 'listing', icon: 'fa-list', label: 'Video List' },
   ],
+
   render() {
     this.el = Dom.get('channelTabs');
     if (!this.el) return;
@@ -4162,12 +4654,14 @@ const ChannelTabs = {
       this.el.appendChild(btn);
     });
   },
+
   setActive(id) {
     if (!this.el) return;
     this.el.querySelectorAll('.channel-tab').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === id);
     });
   },
+
   getActiveTab() {
     if (!this.el) return null;
     const active = this.el.querySelector('.channel-tab.active');
@@ -4195,6 +4689,7 @@ const ChannelVideos = {
   async load(channelId) {
     State.isVideosGridView = true;
     Dom.setMainView('videos');
+	  CombinedMetricsFilter.hide();
 
     const headerTitle = document.querySelector('header h1');
     if (headerTitle) headerTitle.textContent = 'Channel Videos';
@@ -4476,7 +4971,7 @@ const ChartModeDropdown = {
       if (!available[mode]) return;
       if (mode === State.currentChartMode) return;
 
-      this.selectMode(mode);
+      this.selectMode(mode, true);
       options.classList.remove('show');
       button.querySelector('.chart-mode-arrow').classList.remove('rotated');
     });
@@ -4533,7 +5028,7 @@ const ChartModeDropdown = {
       return false;
     }
 
-    await this.selectMode(fallback);
+    await this.selectMode(fallback, true);
     return true;
   },
 
@@ -4565,31 +5060,62 @@ const ChartModeDropdown = {
     return didChangeMode;
   },
 
-  async selectMode(mode) {
-    State.customDateRange = { start: null, end: null };
-    State.customDateRangeLabel = null;
+  async selectMode(mode, preserveGainsState = false) {
+    if (!preserveGainsState) {
+      State.customDateRange = { start: null, end: null };
+      State.customDateRangeLabel = null;
+    }
 
     State.currentChartMode = mode;
-    State.isGainsMode = false;
-    State.isHourlyGainsMode = false;
+
+    if (!preserveGainsState) {
+      State.isGainsMode = false;
+      State.isHourlyGainsMode = false;
+    }
+
     State.isHourlyMode = false;
     State.hourlyData = null;
 
     this.renderSelectedLabel();
 
-    this.gainsToggle.classList.remove('active');
-    this.gainsToggle.innerHTML = `
-      <i class="fas fa-chart-line"></i>
-      <span>Daily Gains</span>
-    `;
-
+    this.updateGainsToggleUI();
     this.updateGainsToggleVisibility();
 
     const config = Config.chartModes[mode];
+
+    if (CombinedMetricsFilter.state.filterMode !== 'all') {
+      await CombinedMetricsFilter.refresh();
+      return;
+    }
+
     if (config.dataPoints === 'hourly-chart') {
       await this.loadHourlyChart();
     } else {
       await this.loadAndDisplayData();
+    }
+  },
+
+  updateGainsToggleUI() {
+    if (!this.gainsToggle) return;
+
+    if (State.isHourlyGainsMode) {
+      this.gainsToggle.classList.add('active');
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-clock"></i>
+        <span>Hourly Gains</span>
+      `;
+    } else if (State.isGainsMode) {
+      this.gainsToggle.classList.add('active');
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-chart-area"></i>
+        <span>Daily Gains</span>
+      `;
+    } else {
+      this.gainsToggle.classList.remove('active');
+      this.gainsToggle.innerHTML = `
+        <i class="fas fa-chart-line"></i>
+        <span>Daily Gains</span>
+      `;
     }
   },
 
@@ -4652,30 +5178,21 @@ const ChartModeDropdown = {
     if (!State.isGainsMode && !State.isHourlyGainsMode) {
       State.isGainsMode = true;
       State.isHourlyGainsMode = false;
-      this.gainsToggle.classList.add('active');
-      this.gainsToggle.innerHTML = `
-        <i class="fas fa-chart-area"></i>
-        <span>Daily Gains</span>
-      `;
     } else if (State.isGainsMode && canShowHourlyGains) {
       State.isGainsMode = false;
       State.isHourlyGainsMode = true;
-      this.gainsToggle.classList.add('active');
-      this.gainsToggle.innerHTML = `
-        <i class="fas fa-clock"></i>
-        <span>Hourly Gains</span>
-      `;
     } else {
       State.isGainsMode = false;
       State.isHourlyGainsMode = false;
-      this.gainsToggle.classList.remove('active');
-      this.gainsToggle.innerHTML = `
-        <i class="fas fa-chart-line"></i>
-        <span>Daily Gains</span>
-      `;
     }
 
-    await Charts.create();
+    this.updateGainsToggleUI();
+
+    if (CombinedMetricsFilter.state.filterMode !== 'all') {
+      await CombinedMetricsFilter.refresh();
+    } else {
+      await Charts.create();
+    }
   },
 
   updateGainsToggleVisibility() {
@@ -4695,11 +5212,7 @@ const ChartModeDropdown = {
       this.gainsToggle.style.display = 'none';
       State.isGainsMode = false;
       State.isHourlyGainsMode = false;
-      this.gainsToggle.classList.remove('active');
-      this.gainsToggle.innerHTML = `
-	      <i class="fas fa-chart-line"></i>
-	      <span>Daily Gains</span>
-	    `;
+      this.updateGainsToggleUI();
     }
 
     const shouldShowDatePicker =
@@ -4827,6 +5340,7 @@ const ChartModeDropdown = {
       await Charts.create();
     } catch (error) {
       console.error('Error loading chart data:', error);
+      const container = Dom.get('videoChart');
       if (container) {
         container.innerHTML = `<div style="text-align:center;padding:20px;color:red;">Error loading chart data: ${error.message}</div>`;
       }
@@ -4868,11 +5382,7 @@ const ChartModeDropdown = {
       this.renderSelectedLabel();
     }
     if (this.gainsToggle) {
-      this.gainsToggle.classList.remove('active');
-      this.gainsToggle.innerHTML = `
-        <i class="fas fa-chart-line"></i>
-        <span>Daily Gains</span>
-      `;
+      this.updateGainsToggleUI();
     }
     CustomDatePicker.reset();
     this.refresh();
@@ -5258,6 +5768,7 @@ const Loader = {
 
       if (switchingChannels) {
         ScrollState.clear('combined', channelId);
+        CombinedMetricsFilter.reset();
       }
 
       State.reset();
@@ -5290,7 +5801,7 @@ const Loader = {
       const container = Dom.get('videoChart');
       if (container) {
         container.innerHTML =
-          '<div style="text-align:center;padding:40px;">Loading channel data...</div>';
+          '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Loading channel data...</div>';
       }
 
       const uploadCard = Dom.get('uploadCountCard');
@@ -5316,6 +5827,7 @@ const Loader = {
           Tables.create(dailyData, currentData);
 
           ChartModeDropdown.show();
+          CombinedMetricsFilter.show();
 
           if (!switchingChannels && ScrollState.has('combined', channelId)) {
             requestAnimationFrame(() => {
@@ -5325,12 +5837,14 @@ const Loader = {
 
           if ('requestIdleCallback' in window) {
             requestIdleCallback(() => {
+              CombinedMetricsFilter.prefetchData();
               Rankings.prefetch(State.currentChannel);
               Gains.prefetch(State.currentChannel);
               Listing.prefetch(State.currentChannel);
             });
           } else {
             setTimeout(() => {
+              CombinedMetricsFilter.prefetchData();
               Rankings.prefetch(State.currentChannel);
               Gains.prefetch(State.currentChannel);
               Listing.prefetch(State.currentChannel);
@@ -5388,6 +5902,7 @@ const Loader = {
 
       Dom.updateUrl('videos', channelId, isNavigation);
       Dom.setMainView('videos');
+      CombinedMetricsFilter.hide();
 
       const exportControls = document.querySelector('.export-controls');
       if (exportControls) exportControls.style.display = 'none';
@@ -5469,6 +5984,7 @@ const Loader = {
 
       Dom.updateUrl('rankings', channelId, isNavigation);
       Dom.setMainView('rankings');
+      CombinedMetricsFilter.hide();
 
       const exportControls = document.querySelector('.export-controls');
       if (exportControls) exportControls.style.display = 'none';
@@ -5557,6 +6073,7 @@ const Loader = {
 
       Dom.updateUrl('gains', channelId, isNavigation);
       Dom.setMainView('gains');
+      CombinedMetricsFilter.hide();
 
       const exportControls = document.querySelector('.export-controls');
       if (exportControls) exportControls.style.display = 'none';
@@ -5637,6 +6154,7 @@ const Loader = {
 
       Dom.updateUrl('list', channelId, isNavigation);
       Dom.setMainView('listing');
+      CombinedMetricsFilter.hide();
 
       const exportControls = document.querySelector('.export-controls');
       if (exportControls) exportControls.style.display = 'none';
@@ -5697,6 +6215,7 @@ const Loader = {
       }
 
       Dom.setMainView('video');
+      CombinedMetricsFilter.hide();
 
       const exportControls = document.querySelector('.export-controls');
       if (exportControls) exportControls.style.display = 'flex';
@@ -6041,7 +6560,11 @@ const MetricCards = {
         ChartModeDropdown.show();
         const didChangeMode = await ChartModeDropdown.refresh();
         if (!didChangeMode) {
-          Charts.create({ animate: true });
+          if (CombinedMetricsFilter.state.filterMode !== 'all') {
+            await CombinedMetricsFilter.refresh();
+          } else {
+            Charts.create({ animate: true });
+          }
         }
       });
     });

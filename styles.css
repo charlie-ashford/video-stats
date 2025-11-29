@@ -1066,7 +1066,7 @@ header h1 {
 .video-type-toggle {
   position: absolute;
   top: 1.5rem;
-  left: 4.5rem;
+  left: calc(1.5rem + 40px + 0.5rem);
   background-color: var(--card-background-color);
   color: var(--text-color);
   border: 1.5px solid var(--border-color);
@@ -1123,7 +1123,7 @@ header h1 {
 .y-axis-bounds-btn {
   position: absolute;
   top: 1.5rem;
-  left: 7.5rem;
+  left: calc(1.5rem + 40px + 0.5rem + 40px + 0.5rem);
   background-color: var(--card-background-color);
   color: var(--text-color);
   border: 1.5px solid var(--border-color);
@@ -1155,7 +1155,7 @@ header h1 {
 }
 
 .chart-container.no-video-toggle .y-axis-bounds-btn {
-  left: 4.5rem;
+  left: calc(1.5rem + 40px + 0.5rem);
 }
 
 .y-axis-modal {
@@ -2730,16 +2730,22 @@ footer .fa-heart {
     left: 1rem;
   }
 
+  .video-type-toggle {
+    top: auto;
+    bottom: 1rem;
+    left: calc(1rem + 36px + 0.5rem);
+  }
+
   .y-axis-bounds-btn {
     top: auto;
     bottom: 1rem;
-    left: 7rem;
+    left: calc(1rem + 36px + 0.5rem + 36px + 0.5rem);
     width: 36px;
     height: 36px;
   }
 
   .chart-container.no-video-toggle .y-axis-bounds-btn {
-    left: 4rem;
+    left: calc(1rem + 36px + 0.5rem);
   }
 
   .y-axis-bounds-btn i {
@@ -2771,12 +2777,6 @@ footer .fa-heart {
   .y-axis-modal-body .button-group button {
     padding: 0.65rem;
     font-size: 0.95rem;
-  }
-
-  .video-type-toggle {
-    top: auto;
-    bottom: 1rem;
-    left: 4rem;
   }
 
   .videos-grid {
@@ -3199,7 +3199,7 @@ footer .fa-heart {
     width: 36px;
     height: 36px;
     bottom: 0.85rem;
-    left: 3.5rem;
+    left: calc(0.85rem + 36px + 0.5rem);
   }
 
   .video-type-toggle i {
@@ -3234,8 +3234,14 @@ footer .fa-heart {
   }
 
   .y-axis-bounds-btn {
+    width: 36px;
+    height: 36px;
     bottom: 0.85rem;
-    left: 6.5rem;
+    left: calc(0.85rem + 36px + 0.5rem + 36px + 0.5rem);
+  }
+
+  .chart-container.no-video-toggle .y-axis-bounds-btn {
+    left: calc(0.85rem + 36px + 0.5rem);
   }
 
   .videos-grid {

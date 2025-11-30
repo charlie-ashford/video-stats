@@ -1205,14 +1205,14 @@ const YAxisBounds = {
 
     const modal = document.createElement('div');
     modal.id = 'yAxisBoundsModal';
-    modal.className = 'y-axis-modal';
+    modal.className = 'modal-overlay';
     modal.innerHTML = `
-      <div class="y-axis-modal-content">
-        <div class="y-axis-modal-header">
+      <div class="modal-content">
+        <div class="modal-header">
           <h3>Set Y-Axis Bounds</h3>
           <button class="close-btn">&times;</button>
         </div>
-        <div class="y-axis-modal-body">
+        <div class="modal-body">
           <div class="input-group">
             <label>Minimum:</label>
             <input type="number" id="yAxisMin" step="any" placeholder="Auto">
@@ -1221,10 +1221,10 @@ const YAxisBounds = {
             <label>Maximum:</label>
             <input type="number" id="yAxisMax" step="any" placeholder="Auto">
           </div>
-          <div class="button-group">
-            <button class="reset-btn">Reset to Default</button>
-            <button class="apply-btn">Apply</button>
-          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="reset-btn">Reset to Default</button>
+          <button class="apply-btn">Apply</button>
         </div>
       </div>
     `;
@@ -5854,43 +5854,46 @@ const CustomDatePicker = {
   createModal() {
     if (this.modal) return this.modal;
 
-    this.modal = Dom.create('div', 'date-picker-modal');
+    this.modal = Dom.create('div', 'modal-overlay');
+    this.modal.id = 'datePickerModal';
     this.modal.innerHTML = `
-      <div class="date-picker-content">
-        <div class="date-picker-header">
-          <h3 id="modalTitle">Select Date Range</h3>
-        </div>
-        <div class="date-picker-body">
-          <div class="date-input-group">
-            <label for="modalStartDate">Start Date</label>
-            <input type="date" id="modalStartDate" />
-          </div>
-          <div class="date-input-group">
-            <label for="modalEndDate">End Date</label>
-            <input type="date" id="modalEndDate" />
-          </div>
-        </div>
-        <div class="date-picker-actions">
-          <button class="date-picker-button secondary" id="resetDatePicker">Reset to Default</button>
-          <button class="date-picker-button primary" id="applyDatePicker">Apply</button>
-        </div>
-      </div>
-    `;
+	      <div class="modal-content">
+	        <div class="modal-header">
+	          <h3 id="modalTitle">Select Date Range</h3>
+	          <button class="close-btn">&times;</button>
+	        </div>
+	        <div class="modal-body">
+	          <div class="input-group">
+	            <label for="modalStartDate">Start Date</label>
+	            <input type="date" id="modalStartDate" />
+	          </div>
+	          <div class="input-group">
+	            <label for="modalEndDate">End Date</label>
+	            <input type="date" id="modalEndDate" />
+	          </div>
+	        </div>
+	        <div class="modal-footer">
+	          <button class="reset-btn">Reset to Default</button>
+	          <button class="apply-btn">Apply</button>
+	        </div>
+	      </div>
+	    `;
 
     document.body.appendChild(this.modal);
 
     this.startDateInput = document.getElementById('modalStartDate');
     this.endDateInput = document.getElementById('modalEndDate');
 
+    this.modal.querySelector('.close-btn').onclick = () => this.closeModal();
+    this.modal.querySelector('.reset-btn').onclick = () =>
+      this.resetToDefault();
+    this.modal.querySelector('.apply-btn').onclick = () =>
+      this.applyDateRange();
+
     this.modal.addEventListener('click', e => {
       if (e.target === this.modal) this.closeModal();
     });
 
-    const resetBtn = document.getElementById('resetDatePicker');
-    resetBtn.addEventListener('click', () => this.resetToDefault());
-
-    const applyBtn = document.getElementById('applyDatePicker');
-    applyBtn.addEventListener('click', () => this.applyDateRange());
     this.modal.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         e.preventDefault();

@@ -981,54 +981,6 @@ header h1 {
   font-size: 0.95rem;
 }
 
-.hourly-mode-toggle {
-  position: absolute;
-  top: 1.5rem;
-  right: 1.5rem;
-  background-color: var(--card-background-color);
-  color: var(--text-color);
-  border: 1.5px solid var(--border-color);
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: var(--font-weight-normal);
-  cursor: pointer;
-  display: none;
-  align-items: center;
-  gap: 0.4rem;
-  transition: all 0.3s ease;
-  z-index: 10;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  opacity: 0.9;
-}
-
-.hourly-mode-toggle:hover {
-  background-color: var(--hover-card-background);
-  border-color: var(--hover-border-color);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
-  opacity: 1;
-}
-
-.hourly-mode-toggle:active {
-  transform: translateY(0);
-}
-
-.hourly-mode-toggle.active {
-  background-color: var(--accent-color);
-  color: #ffffff;
-  border-color: var(--accent-color);
-  opacity: 1;
-}
-
-.hourly-mode-toggle i {
-  font-size: 0.95rem;
-}
-
-.hourly-mode-toggle:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .custom-date-picker-button {
   position: absolute;
   top: 1.5rem;
@@ -1061,6 +1013,12 @@ header h1 {
 
 .custom-date-picker-button i {
   font-size: 1.1rem;
+}
+
+.custom-date-picker-button.active {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #ffffff;
 }
 
 .video-type-toggle {
@@ -1119,23 +1077,6 @@ header h1 {
   font-size: 1.1rem;
 }
 
-.date-picker-modal {
-  display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  align-items: center;
-  justify-content: center;
-}
-
-.date-picker-modal.show {
-  display: flex;
-}
-
 .y-axis-bounds-btn {
   position: absolute;
   top: 1.5rem;
@@ -1166,6 +1107,12 @@ header h1 {
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
 }
 
+.y-axis-bounds-btn.active {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #ffffff;
+}
+
 .y-axis-bounds-btn i {
   font-size: 1.1rem;
 }
@@ -1174,7 +1121,8 @@ header h1 {
   left: calc(1.5rem + 40px + 0.5rem);
 }
 
-.y-axis-modal {
+/* Shared Modal Styles */
+.modal-overlay {
   display: none;
   position: fixed;
   top: 0;
@@ -1182,48 +1130,49 @@ header h1 {
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
+  z-index: 10000;
   align-items: center;
   justify-content: center;
 }
 
-.y-axis-modal.active {
+.modal-overlay.show,
+.modal-overlay.active {
   display: flex;
 }
 
-.y-axis-modal-content {
+.modal-content {
   background-color: var(--card-background-color);
   border-radius: var(--border-radius);
-  padding: 2rem;
   max-width: 400px;
   width: 90%;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   position: relative;
 }
 
-.y-axis-modal-header {
+.modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.y-axis-modal-header h3 {
+.modal-header h3 {
   margin: 0;
   color: var(--text-color);
   font-size: 1.3rem;
   font-weight: var(--font-weight-bold);
 }
 
-.y-axis-modal-header .close-btn {
+.modal-header .close-btn {
   background: none;
   border: none;
   color: var(--text-color);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1231,23 +1180,24 @@ header h1 {
   transition: background-color 0.3s;
 }
 
-.y-axis-modal-header .close-btn:hover {
+.modal-header .close-btn:hover {
   background-color: var(--hover-background-color);
 }
 
-.y-axis-modal-body {
+.modal-body {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  padding: 1.5rem 2rem;
 }
 
-.y-axis-modal-body .input-group {
+.modal-body .input-group {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.y-axis-modal-body .input-group label {
+.modal-body .input-group label {
   font-size: 0.9rem;
   font-weight: var(--font-weight-medium);
   color: var(--text-color);
@@ -1255,7 +1205,7 @@ header h1 {
   letter-spacing: 0.5px;
 }
 
-.y-axis-modal-body .input-group input {
+.modal-body .input-group input {
   background-color: var(--input-background);
   border: 1.5px solid var(--input-border);
   color: var(--text-color);
@@ -1266,138 +1216,21 @@ header h1 {
   transition: border-color 0.3s, box-shadow 0.3s;
 }
 
-.y-axis-modal-body .input-group input:focus {
+.modal-body .input-group input:focus {
   outline: none;
   border-color: var(--input-focus-border);
   box-shadow: 0 0 0 3px rgba(31, 91, 219, 0.1);
 }
 
-.y-axis-modal-body .input-group input::placeholder {
+.modal-body .input-group input::placeholder {
   color: var(--search-bar-placeholder);
 }
 
-.y-axis-modal-body .button-group {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.y-axis-modal-body .button-group button {
-  flex: 1;
-  padding: 0.75rem;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-family: var(--font-family);
-}
-
-.y-axis-modal-body .reset-btn {
-  background-color: var(--hover-card-background);
-  color: var(--text-color);
-  border: 1.5px solid var(--border-color);
-}
-
-.y-axis-modal-body .reset-btn:hover {
-  background-color: var(--hover-background-color);
-  border-color: var(--hover-border-color);
-}
-
-.y-axis-modal-body .apply-btn {
-  background-color: var(--primary-color);
-  color: #ffffff;
-}
-
-.y-axis-modal-body .apply-btn:hover {
-  background-color: var(--button-hover-color);
-  box-shadow: 0 4px 12px rgba(219, 66, 31, 0.3);
-}
-
-.date-picker-content {
-  background-color: var(--card-background-color);
-  border-radius: var(--border-radius);
-  padding: 2rem;
-  max-width: 400px;
-  width: 90%;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-  position: relative;
-}
-
-.date-picker-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-}
-
-.date-picker-header h3 {
-  margin: 0;
-  color: var(--text-color);
-  font-size: 1.3rem;
-  font-weight: var(--font-weight-bold);
-}
-
-.date-picker-close {
-  background: none;
-  border: none;
-  color: var(--text-color);
-  font-size: 1.5rem;
-  cursor: pointer;
-  padding: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: background-color 0.3s;
-}
-
-.date-picker-close:hover {
-  background-color: var(--hover-background-color);
-}
-
-.date-picker-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.date-input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.date-input-group label {
-  font-size: 0.9rem;
-  font-weight: var(--font-weight-medium);
-  color: var(--text-color);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.date-input-group input[type='date'] {
-  background-color: var(--input-background);
-  border: 1.5px solid var(--input-border);
-  color: var(--text-color);
-  padding: 0.75rem;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-family: var(--font-family);
-  transition: border-color 0.3s, box-shadow 0.3s;
+.modal-body .input-group input[type='date'] {
   cursor: pointer;
 }
 
-.date-input-group input[type='date']:focus {
-  outline: none;
-  border-color: var(--input-focus-border);
-  box-shadow: 0 0 0 3px rgba(31, 91, 219, 0.1);
-}
-
-.date-input-group input[type='date']::-webkit-calendar-picker-indicator {
+.modal-body .input-group input[type='date']::-webkit-calendar-picker-indicator {
   cursor: pointer;
   filter: var(--calendar-icon-filter, invert(0));
   width: 20px;
@@ -1405,18 +1238,20 @@ header h1 {
 }
 
 [data-theme='dark']
-  .date-input-group
+  .modal-body
+  .input-group
   input[type='date']::-webkit-calendar-picker-indicator {
   filter: invert(1);
 }
 
-.date-picker-actions {
+.modal-footer {
   display: flex;
   gap: 1rem;
-  margin-top: 1rem;
+  padding: 1.5rem 2rem;
+  border-top: 1px solid var(--border-color);
 }
 
-.date-picker-button {
+.modal-footer button {
   flex: 1;
   padding: 0.75rem;
   border: none;
@@ -1428,37 +1263,23 @@ header h1 {
   font-family: var(--font-family);
 }
 
-.date-picker-button.primary {
-  background-color: var(--primary-color);
-  color: #ffffff;
-}
-
-.date-picker-button.primary:hover {
-  background-color: var(--button-hover-color);
-  box-shadow: 0 4px 12px rgba(219, 66, 31, 0.3);
-}
-
-.date-picker-button.secondary {
+.modal-footer .reset-btn {
   background-color: var(--hover-card-background);
   color: var(--text-color);
-  border: 1.5px solid var(--border-color);
 }
 
-.date-picker-button.secondary:hover {
+.modal-footer .reset-btn:hover {
   background-color: var(--hover-background-color);
-  border-color: var(--hover-border-color);
 }
 
-.custom-date-picker-button.active {
+.modal-footer .apply-btn {
   background-color: var(--primary-color);
-  border-color: var(--primary-color);
   color: #ffffff;
 }
 
-.y-axis-bounds-btn.active {
-  background-color: var(--primary-color);
-  border-color: var(--primary-color);
-  color: #ffffff;
+.modal-footer .apply-btn:hover {
+  background-color: var(--button-hover-color);
+  box-shadow: 0 4px 12px rgba(219, 66, 31, 0.3);
 }
 
 .daily-stats-table {
@@ -2780,29 +2601,37 @@ footer .fa-heart {
     font-size: 1rem;
   }
 
-  .y-axis-modal-content {
-    padding: 1.5rem;
+  .modal-content {
     width: 95%;
   }
 
-  .y-axis-modal-header h3 {
+  .modal-header {
+    padding: 1.25rem 1.5rem;
+  }
+
+  .modal-header h3 {
     font-size: 1.15rem;
   }
 
-  .y-axis-modal-body {
+  .modal-body {
     gap: 1rem;
+    padding: 1.25rem 1.5rem;
   }
 
-  .y-axis-modal-body .input-group label {
+  .modal-body .input-group label {
     font-size: 0.85rem;
   }
 
-  .y-axis-modal-body .input-group input {
+  .modal-body .input-group input {
     padding: 0.65rem;
     font-size: 0.95rem;
   }
 
-  .y-axis-modal-body .button-group button {
+  .modal-footer {
+    padding: 1.25rem 1.5rem;
+  }
+
+  .modal-footer button {
     padding: 0.65rem;
     font-size: 0.95rem;
   }
@@ -3234,31 +3063,16 @@ footer .fa-heart {
     font-size: 1rem;
   }
 
-  .date-picker-content {
-    padding: 1.5rem;
-    width: 95%;
+  .modal-header {
+    padding: 1rem 1.25rem;
   }
 
-  .date-picker-header h3 {
-    font-size: 1.15rem;
+  .modal-body {
+    padding: 1rem 1.25rem;
   }
 
-  .date-picker-body {
-    gap: 1rem;
-  }
-
-  .date-input-group label {
-    font-size: 0.85rem;
-  }
-
-  .date-input-group input[type='date'] {
-    padding: 0.65rem;
-    font-size: 0.95rem;
-  }
-
-  .date-picker-button {
-    padding: 0.65rem;
-    font-size: 0.95rem;
+  .modal-footer {
+    padding: 1rem 1.25rem;
   }
 
   .y-axis-bounds-btn {

@@ -1222,7 +1222,7 @@ const YAxisBounds = {
             <input type="number" id="yAxisMax" step="any" placeholder="Auto">
           </div>
           <div class="button-group">
-            <button class="reset-btn">Reset to Auto</button>
+            <button class="reset-btn">Reset to Default</button>
             <button class="apply-btn">Apply</button>
           </div>
         </div>
@@ -5871,7 +5871,7 @@ const CustomDatePicker = {
           </div>
         </div>
         <div class="date-picker-actions">
-          <button class="date-picker-button secondary" id="cancelDatePicker">Cancel</button>
+          <button class="date-picker-button secondary" id="resetDatePicker">Reset to Default</button>
           <button class="date-picker-button primary" id="applyDatePicker">Apply</button>
         </div>
       </div>
@@ -5886,8 +5886,8 @@ const CustomDatePicker = {
       if (e.target === this.modal) this.closeModal();
     });
 
-    const cancelBtn = document.getElementById('cancelDatePicker');
-    cancelBtn.addEventListener('click', () => this.closeModal());
+    const resetBtn = document.getElementById('resetDatePicker');
+    resetBtn.addEventListener('click', () => this.resetToDefault());
 
     const applyBtn = document.getElementById('applyDatePicker');
     applyBtn.addEventListener('click', () => this.applyDateRange());
@@ -5953,6 +5953,39 @@ const CustomDatePicker = {
 
   closeModal() {
     if (this.modal) this.modal.classList.remove('show');
+  },
+
+  async resetToDefault() {
+    this.closeModal();
+
+    State.customDateRange = { start: null, end: null };
+    State.hourlyDateRange = { start: null, end: null };
+    State.customDateRangeLabel = null;
+
+    if (this.datePickerButton) {
+      this.datePickerButton.classList.remove('active');
+    }
+
+    const container = Dom.get('videoChart');
+    if (container) {
+      container.innerHTML =
+        '<div style="text-align:center;padding:20px;">Resetting to default range...</div>';
+    }
+
+    try {
+      if (State.isHourlyMode) {
+        State.hourlyData = null;
+        await ChartModeDropdown.loadHourlyChart();
+      } else {
+        await ChartModeDropdown.loadAndDisplayData();
+      }
+    } catch (error) {
+      console.error('Failed to reset date range:', error);
+      if (container) {
+        container.innerHTML =
+          '<div style="text-align:center;padding:20px;color:red;">Error resetting date range. Please try again.</div>';
+      }
+    }
   },
 
   async applyDateRange() {

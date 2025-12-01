@@ -90,6 +90,11 @@ const Config = {
       avatar: 'https://www.banner.yt/UC-lHJZR3Gqxm24_Vd_AJ5Yw/avatar',
     },
     {
+      id: 'stokes',
+      name: 'Stokes Twins',
+      avatar: 'https://www.banner.yt/UCbp9MyKCTEww4CxEzc_Tp0Q/avatar',
+    },
+    {
       id: 'cocomelon',
       name: 'Cocomelon - Nursery Rhymes',
       avatar: 'https://www.banner.yt/UCbCmjCuTUZos6Inko4u57UQ/avatar',

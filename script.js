@@ -90,6 +90,11 @@ const Config = {
       avatar: 'https://www.banner.yt/UC-lHJZR3Gqxm24_Vd_AJ5Yw/avatar',
     },
     {
+      id: 'mark',
+      name: 'Mark Rober',
+      avatar: 'https://www.banner.yt/UCY1kMZp36IQSyNx_9h4mpCg/avatar',
+    },
+    {
       id: 'stokes',
       name: 'Stokes Twins',
       avatar: 'https://www.banner.yt/UCbp9MyKCTEww4CxEzc_Tp0Q/avatar',

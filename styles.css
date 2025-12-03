@@ -1968,7 +1968,7 @@ header h1 {
 .video-card-meta {
   display: flex;
   gap: 0.75rem;
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   color: var(--muted-text-color);
   flex-wrap: wrap; 
 }

@@ -309,7 +309,6 @@ const State = {
 
   isRankingsView: false,
   isGainsView: false,
-  isListingView: false,
   isVideosGridView: false,
 
   currentChartMode: Config.defaultChartMode,
@@ -352,6 +351,7 @@ const State = {
     sortKey: 'uploadTime',
     sortDir: 'desc',
     q: '',
+    mode: 'grid',
   },
 
   loadSettings() {
@@ -429,7 +429,6 @@ const State = {
     this.currentChartMode = Config.defaultChartMode;
     this.isGainsMode = false;
     this.isHourlyMode = false;
-    this.isListingView = false;
     this.isVideosGridView = false;
     this.isRankingsView = false;
     this.isGainsView = false;
@@ -523,14 +522,9 @@ const Dom = {
     let newUrl = `${window.location.origin}${window.location.pathname}`;
     const params = new URLSearchParams();
 
-    if (path === 'rankings' || path === 'gains' || path === 'list') {
+    if (path === 'rankings' || path === 'gains') {
       params.set('channel', channel || 'mrbeast');
-      const tab =
-        path === 'list'
-          ? 'listing'
-          : path === 'rankings'
-          ? 'rankings'
-          : 'gains';
+      const tab = path === 'rankings' ? 'rankings' : 'gains';
       params.set('tab', tab);
     } else if (path === 'videos') {
       params.set('channel', channel || 'mrbeast');
@@ -632,37 +626,26 @@ const Dom = {
       this.hide('videoStatsView');
       this.hide('rankingsView');
       this.hide('gainsView');
-      this.hide('listingView');
     } else if (view === 'rankings') {
       this.hide('channelVideosView');
       this.hide('videoStatsView');
       this.show('rankingsView');
       this.hide('gainsView');
-      this.hide('listingView');
     } else if (view === 'gains') {
       this.hide('channelVideosView');
       this.hide('videoStatsView');
       this.hide('rankingsView');
       this.show('gainsView');
-      this.hide('listingView');
-    } else if (view === 'listing') {
-      this.hide('channelVideosView');
-      this.hide('videoStatsView');
-      this.hide('rankingsView');
-      this.hide('gainsView');
-      this.show('listingView');
     } else if (view === 'video') {
       this.hide('channelVideosView');
       this.show('videoStatsView');
       this.hide('rankingsView');
       this.hide('gainsView');
-      this.hide('listingView');
     } else {
       this.hide('channelVideosView');
       this.show('videoStatsView');
       this.hide('rankingsView');
       this.hide('gainsView');
-      this.hide('listingView');
     }
 
     if (typeof Layout?.setupResponsive === 'function') {
@@ -3531,502 +3514,6 @@ Gains.prefetch = async function (channelId) {
   } catch {}
 };
 
-const Listing = {
-  state: {
-    items: [],
-    sortKey: 'uploadTime',
-    sortDir: 'desc',
-    filter: 'all',
-    q: '',
-    loading: false,
-  },
-
-  cache: new Map(),
-  pageSize: 60,
-  filteredItems: [],
-  visibleCount: 0,
-  _scrollHandler: null,
-
-  parseDurationToSeconds(str) {
-    if (!str) return 0;
-    const parts = String(str)
-      .split(':')
-      .map(v => parseInt(v, 10));
-    if (parts.some(isNaN)) return 0;
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    return parts[0] || 0;
-  },
-
-  compare(a, b, key, dir) {
-    const mul = dir === 'asc' ? 1 : -1;
-    switch (key) {
-      case 'views':
-      case 'likes':
-      case 'comments': {
-        const av = parseInt(a[key] || 0, 10);
-        const bv = parseInt(b[key] || 0, 10);
-        return (av - bv) * mul;
-      }
-      case 'duration': {
-        const av = this.parseDurationToSeconds(a.duration);
-        const bv = this.parseDurationToSeconds(b.duration);
-        return (av - bv) * mul;
-      }
-      case 'uploadTime':
-      case 'lastUpdated': {
-        const av = new Date(a[key] || 0).getTime();
-        const bv = new Date(b[key] || 0).getTime();
-        return (av - bv) * mul;
-      }
-      case 'isShort': {
-        const av = a.isShort ? 1 : 0;
-        const bv = b.isShort ? 1 : 0;
-        return (av - bv) * mul;
-      }
-      case 'title':
-      default: {
-        const av = (a.title || '').toLowerCase();
-        const bv = (b.title || '').toLowerCase();
-        return av.localeCompare(bv) * mul;
-      }
-    }
-  },
-
-  formatDate(iso) {
-    if (!iso) return '';
-    const dt = luxon.DateTime.fromISO(iso, { zone: 'America/New_York' });
-    if (!dt.isValid) return '';
-    return `${dt.toFormat('M/d/yyyy')} ${dt.toFormat('h:mm:ss a')} EST`;
-  },
-
-  async fetch(channelId, filter = 'all') {
-    const cacheKey = `${channelId}-${filter}`;
-    const url = `${Config.api.listing}?channel=${channelId}&filter=${filter}`;
-
-    try {
-      const data = await Net.fetchJson(url, {}, 10 * 60 * 1000);
-      if (!data.videos || !Array.isArray(data.videos)) {
-        return this.cache.get(cacheKey) || [];
-      }
-      this.cache.set(cacheKey, data.videos);
-      return data.videos;
-    } catch (error) {
-      console.error('Listing fetch error:', error);
-      return this.cache.get(cacheKey) || [];
-    }
-  },
-
-  async fetchAll() {
-    const cacheKey = `${State.currentChannel}-${this.state.filter}`;
-    const cached = this.cache.get(cacheKey);
-
-    if (cached) {
-      this.state.items = cached;
-      this.render();
-    }
-
-    try {
-      this.state.loading = true;
-      const videos = await this.fetch(State.currentChannel, this.state.filter);
-      this.state.items = videos;
-      if (State.isListingView) {
-        this.render();
-      }
-    } catch (e) {
-      if (!cached) {
-        this.state.items = [];
-        if (State.isListingView) this.render();
-      }
-      console.error('Listing fetch error:', e);
-    } finally {
-      this.state.loading = false;
-    }
-  },
-
-  updateInstant() {
-    if (!State.isListingView || !State.currentChannel) return;
-    const cacheKey = `${State.currentChannel}-${this.state.filter}`;
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      this.state.items = cached;
-      this.render();
-    }
-  },
-
-  async updateWithFetch() {
-    if (!State.isListingView || !State.currentChannel) return;
-
-    const tbody = Dom.get('listingTbody');
-    if (tbody) {
-      tbody.innerHTML =
-        '<tr><td colspan="8" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Updating video list...</td></tr>';
-    }
-
-    const cacheKey = `${State.currentChannel}-${this.state.filter}`;
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      this.state.items = cached;
-      this.render();
-    }
-
-    try {
-      const videos = await this.fetch(State.currentChannel, this.state.filter);
-      if (State.isListingView) {
-        this.state.items = videos;
-        this.render();
-      }
-    } catch (error) {
-      if (tbody && !cached) {
-        tbody.innerHTML =
-          '<tr><td colspan="8" style="padding: 1rem; text-align: center; color: red;">Error loading video list. Please try again.</td></tr>';
-      }
-    }
-  },
-
-  renderVisible(startIndex = 0) {
-    const tbody = Dom.get('listingTbody');
-    if (!tbody) return;
-
-    if (startIndex === 0) tbody.innerHTML = '';
-
-    const frag = document.createDocumentFragment();
-    for (let i = startIndex; i < this.visibleCount; i++) {
-      const v = this.filteredItems[i];
-      if (!v) continue;
-
-      const tr = document.createElement('tr');
-      tr.className = 'listing-row';
-      const typeLabel = v.isShort ? 'Short' : 'Long';
-      const rank = i + 1;
-      tr.innerHTML = `
-        <td class="listing-rank-cell" data-label="#">
-          <div class="listing-rank">${rank}</div>
-        </td>
-        <td class="listing-video-cell" data-label="Video">     
-          <div class="listing-video">
-            <img class="listing-video-thumb" src="${
-              v.thumbnail
-            }" alt="" loading="lazy"/>
-            <div class="listing-video-title">${v.title || ''}</div>
-          </div>
-        </td>
-        <td class="listing-num" data-label="Views">${(
-          v.views || 0
-        ).toLocaleString()}</td>
-        <td class="listing-num" data-label="Likes">${(
-          v.likes || 0
-        ).toLocaleString()}</td>
-        <td class="listing-num" data-label="Comments">${(
-          v.comments || 0
-        ).toLocaleString()}</td>
-        <td data-label="Duration">${v.duration || ''}</td>
-        <td data-label="Upload Date">${this.formatDate(v.uploadTime)}</td>
-        <td data-label="Type"><span class="type-pill ${
-          v.isShort ? 'short' : 'long'
-        }">${typeLabel}</span></td>
-      `;
-      tr.addEventListener('click', () => {
-        Loader.loadVideo(v.videoId, State.currentChannel);
-        const searchInput = Dom.get('searchInput');
-        if (searchInput) searchInput.value = v.title || '';
-      });
-      frag.appendChild(tr);
-    }
-    tbody.appendChild(frag);
-  },
-
-  loadMoreIfNeeded() {
-    if (!State.isListingView) return;
-    if (!this.filteredItems || !this.filteredItems.length) return;
-    if (this.visibleCount >= this.filteredItems.length) return;
-
-    const tableWrapper = document.querySelector('.listing-table-wrapper');
-    if (!tableWrapper) return;
-
-    const scrollBottom = tableWrapper.scrollTop + tableWrapper.clientHeight;
-    const threshold = tableWrapper.scrollHeight - tableWrapper.clientHeight * 2;
-    if (scrollBottom < threshold) return;
-
-    const prevCount = this.visibleCount;
-    this.visibleCount = Math.min(
-      this.visibleCount + this.pageSize,
-      this.filteredItems.length
-    );
-
-    if (this.visibleCount > prevCount) {
-      this.renderVisible(prevCount);
-    }
-  },
-
-  bindInfiniteScroll() {
-    if (this._scrollHandler) return;
-    const tableWrapper = document.querySelector('.listing-table-wrapper');
-    if (!tableWrapper) return;
-
-    this._scrollHandler = Dom.debounce(() => this.loadMoreIfNeeded(), 20);
-    tableWrapper.addEventListener('scroll', this._scrollHandler, {
-      passive: true,
-    });
-  },
-
-  unbindInfiniteScroll() {
-    if (this._scrollHandler) {
-      const tableWrapper = document.querySelector('.listing-table-wrapper');
-      if (tableWrapper) {
-        tableWrapper.removeEventListener('scroll', this._scrollHandler);
-      }
-      this._scrollHandler = null;
-    }
-  },
-
-  render() {
-    const tbody = Dom.get('listingTbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    if (this.state.loading && this.state.items.length === 0) {
-      tbody.innerHTML =
-        '<tr><td colspan="8" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">Loading video list...</td></tr>';
-      return;
-    }
-
-    const q = this.state.q.trim().toLowerCase();
-    let filtered = this.state.items.filter(v =>
-      q ? (v.title || '').toLowerCase().includes(q) : true
-    );
-
-    filtered = filtered.sort((a, b) =>
-      this.compare(a, b, this.state.sortKey, this.state.sortDir)
-    );
-
-    this.filteredItems = filtered;
-    this.visibleCount = Math.min(this.pageSize, this.filteredItems.length);
-    this.renderVisible(0);
-
-    if (filtered.length === 0) {
-      const message = q
-        ? `No videos found matching "${q}"`
-        : this.state.items.length === 0
-        ? 'No videos available for this filter'
-        : 'No videos match the current search';
-      tbody.innerHTML = `<tr><td colspan="8" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">${message}</td></tr>`;
-
-      const subtitle = document.getElementById('listingSubtitle');
-      if (subtitle) {
-        const totalCount = this.state.items.length;
-        const label =
-          this.state.filter === 'all'
-            ? 'videos'
-            : this.state.filter === 'long'
-            ? 'videos'
-            : 'shorts';
-
-        if (q) {
-          subtitle.textContent = `0 of ${totalCount.toLocaleString()} ${label} (filtered)`;
-        } else if (this.state.items.length === 0) {
-          subtitle.textContent = `0 ${label}`;
-        } else {
-          subtitle.textContent = `0 ${label} (filtered)`;
-        }
-      }
-
-      return;
-    }
-
-    const subtitle = document.getElementById('listingSubtitle');
-    if (subtitle) {
-      const totalCount = this.state.items.length;
-      const filteredCount = filtered.length;
-      const label =
-        this.state.filter === 'all'
-          ? 'videos'
-          : this.state.filter === 'long'
-          ? 'videos'
-          : 'shorts';
-
-      if (q) {
-        subtitle.textContent = `${filteredCount.toLocaleString()} of ${totalCount.toLocaleString()} ${label} (filtered)`;
-      } else {
-        subtitle.textContent = `${filteredCount.toLocaleString()} ${label}`;
-      }
-    }
-
-    this.bindInfiniteScroll();
-  },
-
-  bind() {
-    document.querySelectorAll('.listing-table th.sortable').forEach(th => {
-      th.addEventListener('click', () => {
-        const key = th.dataset.key;
-        const defaultKey = 'uploadTime';
-        const defaultDir = 'desc';
-
-        if (this.state.sortKey === key) {
-          if (this.state.sortDir === 'desc') {
-            this.state.sortDir = 'asc';
-          } else if (this.state.sortDir === 'asc') {
-            this.state.sortKey = defaultKey;
-            this.state.sortDir = defaultDir;
-          } else {
-            this.state.sortDir = 'desc';
-          }
-        } else {
-          this.state.sortKey = key;
-          this.state.sortDir = 'desc';
-        }
-
-        document.querySelectorAll('.listing-table th.sortable').forEach(h => {
-          h.classList.remove('sorted-asc', 'sorted-desc');
-          h.removeAttribute('aria-sort');
-        });
-        const applyIndicator = (colKey, dir) => {
-          const activeTh = document.querySelector(
-            `.listing-table th.sortable[data-key="${colKey}"]`
-          );
-          if (activeTh) {
-            activeTh.classList.add(
-              dir === 'asc' ? 'sorted-asc' : 'sorted-desc'
-            );
-            activeTh.setAttribute('aria-sort', dir);
-          }
-        };
-
-        if (
-          this.state.sortKey === defaultKey &&
-          this.state.sortDir === defaultDir
-        ) {
-          applyIndicator(defaultKey, defaultDir);
-        } else {
-          applyIndicator(this.state.sortKey, this.state.sortDir);
-        }
-
-        const tbody = Dom.get('listingTbody');
-        if (tbody) {
-          const q = this.state.q.trim().toLowerCase();
-          let filtered = this.state.items.filter(v =>
-            q ? (v.title || '').toLowerCase().includes(q) : true
-          );
-
-          filtered = filtered.sort((a, b) =>
-            this.compare(a, b, this.state.sortKey, this.state.sortDir)
-          );
-
-          this.filteredItems = filtered;
-          this.visibleCount = Math.min(
-            this.filteredItems.length,
-            Math.max(this.visibleCount, this.pageSize)
-          );
-          this.renderVisible(0);
-          this.bindInfiniteScroll();
-        }
-      });
-    });
-
-    document.querySelectorAll('.listing-filter-button').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document
-          .querySelectorAll('.listing-filter-button')
-          .forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.state.filter = btn.dataset.filter;
-
-        const tableWrapper = document.querySelector('.listing-table-wrapper');
-        if (tableWrapper) {
-          tableWrapper.scrollTop = 0;
-        }
-
-        this.updateWithFetch();
-      });
-    });
-
-    const input = Dom.get('listingSearchInput');
-    if (input) {
-      input.addEventListener(
-        'input',
-        Dom.debounce(e => {
-          this.state.q = e.target.value || '';
-
-          const tableWrapper = document.querySelector('.listing-table-wrapper');
-          if (tableWrapper) {
-            tableWrapper.scrollTop = 0;
-          }
-
-          this.render();
-        }, 150)
-      );
-    }
-
-    const tableWrapper = document.querySelector('.listing-table-wrapper');
-    if (tableWrapper) {
-      tableWrapper.addEventListener('scroll', e => {
-        if (e.target.scrollTop > 0) e.target.classList.add('scrolled');
-        else e.target.classList.remove('scrolled');
-
-        if (State.isListingView && State.currentChannel) {
-          const scrollKey = `listing:${State.currentChannel}`;
-          ScrollState.positions.set(scrollKey, e.target.scrollTop);
-        }
-      });
-
-      Dom.enableHorizontalWheelScroll(tableWrapper, { requireShift: true });
-
-      tableWrapper.addEventListener(
-        'wheel',
-        e => {
-          if (e.shiftKey) return;
-
-          const { scrollTop, scrollHeight, clientHeight } = tableWrapper;
-          const isScrollingUp = e.deltaY < 0;
-          const isScrollingDown = e.deltaY > 0;
-          if (
-            (isScrollingUp && scrollTop === 0) ||
-            (isScrollingDown && scrollTop + clientHeight >= scrollHeight)
-          ) {
-            e.preventDefault();
-          }
-        },
-        { passive: false }
-      );
-    }
-  },
-
-  applySettings() {
-    document.querySelectorAll('.listing-filter-button').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.filter === this.state.filter);
-    });
-    const activeTh = document.querySelector(
-      `.listing-table th.sortable[data-key="${this.state.sortKey}"]`
-    );
-    document
-      .querySelectorAll('.listing-table th.sortable')
-      .forEach(h => h.classList.remove('sorted-asc', 'sorted-desc'));
-    if (activeTh) {
-      activeTh.classList.add(
-        this.state.sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc'
-      );
-      activeTh.setAttribute('aria-sort', this.state.sortDir);
-    }
-  },
-
-  async refresh() {
-    await this.fetchAll();
-  },
-
-  init() {
-    this.bind();
-  },
-};
-
-Listing.prefetch = async function (channelId) {
-  const filters = ['all', 'long', 'short'];
-  try {
-    await Promise.allSettled(filters.map(f => Listing.fetch(channelId, f)));
-  } catch (e) {
-    console.error('Listing prefetch error:', e);
-  }
-};
-
 const Export = {
   generateCsv(timestamps, mode = 'hourly') {
     if (!Array.isArray(timestamps) || timestamps.length === 0) return '';
@@ -5056,7 +4543,6 @@ const ChannelTabs = {
     { id: 'videos', icon: 'fa-video', label: 'Videos' },
     { id: 'rankings', icon: 'fa-trophy', label: 'Video Rankings' },
     { id: 'gains', icon: 'fa-chart-line', label: 'Video Gains' },
-    { id: 'listing', icon: 'fa-list', label: 'Video List' },
   ],
 
   render() {
@@ -5103,10 +4589,68 @@ function formatDuration(duration) {
 const ChannelVideos = {
   grid: null,
   empty: null,
+  listWrapper: null,
+  listTbody: null,
+  _controlsBound: false,
+
   pageSize: 60,
   filteredItems: [],
   visibleCount: 0,
   _scrollHandler: null,
+  _listScrollHandler: null,
+
+  parseDurationToSeconds(str) {
+    if (!str) return 0;
+    const parts = String(str)
+      .split(':')
+      .map(v => parseInt(v, 10));
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] || 0;
+  },
+
+  compare(a, b, key, dir) {
+    const mul = dir === 'asc' ? 1 : -1;
+    switch (key) {
+      case 'views':
+      case 'likes':
+      case 'comments': {
+        const av = parseInt(a[key] || 0, 10);
+        const bv = parseInt(b[key] || 0, 10);
+        return (av - bv) * mul;
+      }
+      case 'duration': {
+        const av = this.parseDurationToSeconds(a.duration);
+        const bv = this.parseDurationToSeconds(b.duration);
+        return (av - bv) * mul;
+      }
+      case 'uploadTime':
+      case 'lastUpdated': {
+        const av = new Date(a[key] || 0).getTime();
+        const bv = new Date(b[key] || 0).getTime();
+        return (av - bv) * mul;
+      }
+      case 'isShort': {
+        const av = a.isShort ? 1 : 0;
+        const bv = b.isShort ? 1 : 0;
+        return (av - bv) * mul;
+      }
+      case 'title':
+      default: {
+        const av = (a.title || '').toLowerCase();
+        const bv = (b.title || '').toLowerCase();
+        return av.localeCompare(bv) * mul;
+      }
+    }
+  },
+
+  formatDate(iso) {
+    if (!iso) return '';
+    const dt = luxon.DateTime.fromISO(iso, { zone: 'America/New_York' });
+    if (!dt.isValid) return '';
+    return `${dt.toFormat('M/d/yyyy')} ${dt.toFormat('h:mm:ss a')} EST`;
+  },
 
   async load(channelId) {
     State.isVideosGridView = true;
@@ -5118,19 +4662,72 @@ const ChannelVideos = {
 
     this.grid = Dom.get('videosGrid');
     this.empty = Dom.get('videosGridEmpty');
-    if (this.grid) this.grid.innerHTML = '';
+    this.listWrapper = Dom.get('videosListWrapper');
+    this.listTbody = Dom.get('videosListTbody');
 
-    const videos = await Listing.fetch(channelId, 'all');
+    if (this.grid) this.grid.innerHTML = '';
+    if (this.listTbody) this.listTbody.innerHTML = '';
+
+    const videos = await Net.fetchJson(
+      `${Config.api.listing}?channel=${channelId}&filter=all`
+    )
+      .then(d => d.videos || [])
+      .catch(() => []);
+
     State.videosGrid.items = Array.isArray(videos) ? videos : [];
 
     this.applyFiltersAndRender();
   },
 
-  applyFiltersAndRender() {
-    if (!this.grid) return;
-    const { filter, sortKey, sortDir, q } = State.videosGrid;
+  updateSortControlsUI() {
+    const select = document.getElementById('videosSortSelect');
+    const dirBtn = document.getElementById('videosSortDirBtn');
+    const viewToggle = document.getElementById('videosViewToggle');
 
-    let list = State.videosGrid.items.slice();
+    if (select) {
+      select.value = State.videosGrid.sortKey;
+    }
+
+    if (dirBtn) {
+      dirBtn.dataset.dir = State.videosGrid.sortDir;
+      dirBtn.title =
+        State.videosGrid.sortDir === 'asc'
+          ? 'Sort: Ascending'
+          : 'Sort: Descending';
+      dirBtn.innerHTML =
+        State.videosGrid.sortDir === 'asc'
+          ? '<i class="fas fa-arrow-up-short-wide"></i>'
+          : '<i class="fas fa-arrow-down-wide-short"></i>';
+
+      if (State.videosGrid.sortDir === 'asc') {
+        dirBtn.classList.add('active');
+      } else {
+        dirBtn.classList.remove('active');
+      }
+    }
+
+    if (viewToggle) {
+      const mode = State.videosGrid.mode;
+      viewToggle.dataset.mode = mode;
+      viewToggle.title =
+        mode === 'grid' ? 'Switch to list view' : 'Switch to grid view';
+      viewToggle.innerHTML =
+        mode === 'grid'
+          ? '<i class="fas fa-th"></i>'
+          : '<i class="fas fa-list"></i>';
+
+      if (mode === 'list') {
+        viewToggle.classList.add('active');
+      } else {
+        viewToggle.classList.remove('active');
+      }
+    }
+  },
+
+  applyFiltersAndRender() {
+    const { filter, sortKey, sortDir, q, mode } = State.videosGrid;
+
+    let list = (State.videosGrid.items || []).slice();
 
     if (filter === 'short') list = list.filter(v => v.isShort);
     else if (filter === 'long') list = list.filter(v => !v.isShort);
@@ -5140,31 +4737,44 @@ const ChannelVideos = {
       list = list.filter(v => (v.title || '').toLowerCase().includes(qq));
     }
 
-    list.sort((a, b) => Listing.compare(a, b, sortKey, sortDir));
+    list.sort((a, b) => this.compare(a, b, sortKey, sortDir));
 
     this.filteredItems = list;
     this.visibleCount = Math.min(this.pageSize, this.filteredItems.length);
-    this.renderVisible(0);
 
     const subtitle = Dom.get('videosSubtitle');
     if (subtitle) {
       const label = filter === 'short' ? 'shorts' : 'videos';
-
       let totalOfType = State.videosGrid.items.length;
       if (filter === 'short') {
         totalOfType = State.videosGrid.items.filter(v => v.isShort).length;
       } else if (filter === 'long') {
         totalOfType = State.videosGrid.items.filter(v => !v.isShort).length;
       }
-
       const available = this.filteredItems.length;
       subtitle.textContent = q
         ? `${available.toLocaleString()} of ${totalOfType.toLocaleString()} ${label} (filtered)`
         : `${available.toLocaleString()} ${label}`;
     }
+
+    if (mode === 'grid') {
+      if (this.listWrapper) this.listWrapper.style.display = 'none';
+      if (this.grid) this.grid.style.display = 'grid';
+      this.renderGridVisible(0);
+      this.bindGridInfiniteScroll();
+      this.unbindListInfiniteScroll();
+    } else {
+      if (this.grid) this.grid.style.display = 'none';
+      if (this.listWrapper) this.listWrapper.style.display = 'block';
+      this.renderListVisible(0);
+      this.bindListInfiniteScroll();
+      this.unbindGridInfiniteScroll();
+    }
+
+    this.updateSortControlsUI();
   },
 
-  renderVisible(startIndex = 0) {
+  renderGridVisible(startIndex = 0) {
     if (!this.grid || !this.empty) return;
 
     if (!this.filteredItems || this.filteredItems.length === 0) {
@@ -5183,36 +4793,43 @@ const ChannelVideos = {
 
       const card = Dom.create('div', 'video-card');
       card.innerHTML = `
-	  <div class="video-card-thumb-wrapper">
-	    <img class="video-card-thumb" src="${v.thumbnail}" alt="" loading="lazy" />
-	    ${
-        v.duration
-          ? `<span class="video-duration-badge">${formatDuration(
-              v.duration
-            )}</span>`
-          : ''
-      }
-	  </div>
-	  <div class="video-card-body">
-	    <div class="video-card-title">${v.title || ''}</div>
-	    <div class="video-card-meta">
-	      <span><i class="fas fa-eye"></i> ${(v.views || 0).toLocaleString()}</span>
-	      <span><i class="fas fa-thumbs-up"></i> ${(
-          v.likes || 0
-        ).toLocaleString()}</span>
-	    </div>
-	    ${
-        v.uploadTime
-          ? `<div class="video-card-date">
-	            <i class="fas fa-calendar"></i>
-	            <span>${luxon.DateTime.fromISO(v.uploadTime)
-                .setZone('America/New_York')
-                .toFormat('MMM d, yyyy')}</span>
-	          </div>`
-          : ''
-      }
-	  </div>
-	`;
+        <div class="video-card-thumb-wrapper">
+          <img class="video-card-thumb" src="${
+            v.thumbnail
+          }" alt="" loading="lazy" />
+          ${
+            v.duration
+              ? `<span class="video-duration-badge">${formatDuration(
+                  v.duration
+                )}</span>`
+              : ''
+          }
+        </div>
+        <div class="video-card-body">
+          <div class="video-card-title">${v.title || ''}</div>
+          <div class="video-card-meta">
+            <span><i class="fas fa-eye"></i> ${(
+              v.views || 0
+            ).toLocaleString()}</span>
+            <span><i class="fas fa-thumbs-up"></i> ${(
+              v.likes || 0
+            ).toLocaleString()}</span>
+            <span><i class="fas fa-comments"></i> ${(
+              v.comments || 0
+            ).toLocaleString()}</span>
+          </div>
+          ${
+            v.uploadTime
+              ? `<div class="video-card-date">
+                  <i class="fas fa-calendar"></i>
+                  <span>${luxon.DateTime.fromISO(v.uploadTime)
+                    .setZone('America/New_York')
+                    .toFormat('MMM d, yyyy')}</span>
+                </div>`
+              : ''
+          }
+        </div>
+      `;
       card.addEventListener('click', () => {
         Loader.loadVideo(v.videoId, State.currentChannel);
         const input = Dom.get('searchInput');
@@ -5224,8 +4841,66 @@ const ChannelVideos = {
     this.grid.appendChild(frag);
   },
 
-  loadMoreIfNeeded() {
+  renderListVisible(startIndex = 0) {
+    if (!this.listTbody) return;
+
+    if (!this.filteredItems || this.filteredItems.length === 0) {
+      this.listTbody.innerHTML =
+        '<tr><td colspan="8" style="padding: 1rem; text-align: center; color: var(--muted-text-color);">No videos match the current filters</td></tr>';
+      return;
+    }
+
+    if (startIndex === 0) this.listTbody.innerHTML = '';
+
+    const frag = document.createDocumentFragment();
+    for (let i = startIndex; i < this.visibleCount; i++) {
+      const v = this.filteredItems[i];
+      if (!v) continue;
+
+      const tr = document.createElement('tr');
+      tr.className = 'listing-row';
+      const typeLabel = v.isShort ? 'Short' : 'Long';
+      const rank = i + 1;
+      tr.innerHTML = `
+        <td class="listing-rank-cell" data-label="#">
+          <div class="listing-rank">${rank}</div>
+        </td>
+        <td class="listing-video-cell" data-label="Video">     
+          <div class="listing-video">
+            <img class="listing-video-thumb" src="${
+              v.thumbnail
+            }" alt="" loading="lazy"/>
+            <div class="listing-video-title">${v.title || ''}</div>
+          </div>
+        </td>
+        <td class="listing-num" data-label="Views">${(
+          v.views || 0
+        ).toLocaleString()}</td>
+        <td class="listing-num" data-label="Likes">${(
+          v.likes || 0
+        ).toLocaleString()}</td>
+        <td class="listing-num" data-label="Comments">${(
+          v.comments || 0
+        ).toLocaleString()}</td>
+        <td data-label="Duration">${v.duration || ''}</td>
+        <td data-label="Upload Date">${this.formatDate(v.uploadTime)}</td>
+        <td data-label="Type"><span class="type-pill ${
+          v.isShort ? 'short' : 'long'
+        }">${typeLabel}</span></td>
+      `;
+      tr.addEventListener('click', () => {
+        Loader.loadVideo(v.videoId, State.currentChannel);
+        const searchInput = Dom.get('searchInput');
+        if (searchInput) searchInput.value = v.title || '';
+      });
+      frag.appendChild(tr);
+    }
+    this.listTbody.appendChild(frag);
+  },
+
+  loadMoreGridIfNeeded() {
     if (!State.isVideosGridView) return;
+    if (State.videosGrid.mode !== 'grid') return;
     if (!this.filteredItems || !this.filteredItems.length) return;
     if (this.visibleCount >= this.filteredItems.length) return;
 
@@ -5240,24 +4915,94 @@ const ChannelVideos = {
     );
 
     if (this.visibleCount > prevCount) {
-      this.renderVisible(prevCount);
+      this.renderGridVisible(prevCount);
     }
   },
 
-  bindInfiniteScroll() {
+  bindGridInfiniteScroll() {
     if (this._scrollHandler) return;
-    this._scrollHandler = Dom.debounce(() => this.loadMoreIfNeeded(), 20);
+    this._scrollHandler = Dom.debounce(() => this.loadMoreGridIfNeeded(), 20);
     window.addEventListener('scroll', this._scrollHandler, { passive: true });
   },
 
-  unbindInfiniteScroll() {
+  unbindGridInfiniteScroll() {
     if (this._scrollHandler) {
       window.removeEventListener('scroll', this._scrollHandler);
       this._scrollHandler = null;
     }
   },
 
+  loadMoreListIfNeeded() {
+    if (!State.isVideosGridView) return;
+    if (State.videosGrid.mode !== 'list') return;
+    if (!this.filteredItems || !this.filteredItems.length) return;
+    if (this.visibleCount >= this.filteredItems.length) return;
+
+    const wrapper = this.listWrapper;
+    if (!wrapper) return;
+
+    const scrollBottom = wrapper.scrollTop + wrapper.clientHeight;
+    const threshold = wrapper.scrollHeight - wrapper.clientHeight * 2;
+    if (scrollBottom < threshold) return;
+
+    const prevCount = this.visibleCount;
+    this.visibleCount = Math.min(
+      this.visibleCount + this.pageSize,
+      this.filteredItems.length
+    );
+
+    if (this.visibleCount > prevCount) {
+      this.renderListVisible(prevCount);
+    }
+  },
+
+  bindListInfiniteScroll() {
+    if (this._listScrollHandler) return;
+    const wrapper = this.listWrapper;
+    if (!wrapper) return;
+
+    this._listScrollHandler = Dom.debounce(
+      () => this.loadMoreListIfNeeded(),
+      20
+    );
+    wrapper.addEventListener('scroll', this._listScrollHandler, {
+      passive: true,
+    });
+
+    Dom.enableHorizontalWheelScroll(wrapper, { requireShift: true });
+
+    wrapper.addEventListener(
+      'wheel',
+      e => {
+        if (e.shiftKey) return;
+        const { scrollTop, scrollHeight, clientHeight } = wrapper;
+        const isUp = e.deltaY < 0;
+        const isDown = e.deltaY > 0;
+        if (
+          (isUp && scrollTop === 0) ||
+          (isDown && scrollTop + clientHeight >= scrollHeight)
+        ) {
+          e.preventDefault();
+        }
+      },
+      { passive: false }
+    );
+  },
+
+  unbindListInfiniteScroll() {
+    if (this._listScrollHandler) {
+      const wrapper = this.listWrapper;
+      if (wrapper) {
+        wrapper.removeEventListener('scroll', this._listScrollHandler);
+      }
+      this._listScrollHandler = null;
+    }
+  },
+
   bindControls() {
+    if (this._controlsBound) return;
+    this._controlsBound = true;
+
     document.querySelectorAll('.videos-filter-button').forEach(btn => {
       btn.addEventListener('click', () => {
         document
@@ -5270,18 +5015,52 @@ const ChannelVideos = {
       });
     });
 
-    document.querySelectorAll('.videos-sort-button').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document
-          .querySelectorAll('.videos-sort-button')
-          .forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        State.videosGrid.sortKey = btn.dataset.sort;
-        State.videosGrid.sortDir = btn.dataset.dir || 'desc';
-        window.scrollTo(0, 0);
+    const sortSelect = document.getElementById('videosSortSelect');
+    if (sortSelect) {
+      sortSelect.addEventListener('change', e => {
+        State.videosGrid.sortKey = e.target.value;
         this.applyFiltersAndRender();
       });
-    });
+    }
+
+    const dirBtn = document.getElementById('videosSortDirBtn');
+    if (dirBtn) {
+      dirBtn.addEventListener('click', () => {
+        State.videosGrid.sortDir =
+          State.videosGrid.sortDir === 'asc' ? 'desc' : 'asc';
+
+        if (State.videosGrid.sortDir === 'desc') {
+          dirBtn.classList.add('active');
+        } else {
+          dirBtn.classList.remove('active');
+        }
+
+        this.applyFiltersAndRender();
+      });
+    }
+
+    const viewToggle = document.getElementById('videosViewToggle');
+    if (viewToggle) {
+      viewToggle.addEventListener('click', () => {
+        State.videosGrid.mode =
+          State.videosGrid.mode === 'grid' ? 'list' : 'grid';
+
+        if (State.videosGrid.mode === 'list') {
+          viewToggle.classList.add('active');
+        } else {
+          viewToggle.classList.remove('active');
+        }
+
+        this.visibleCount = Math.min(this.pageSize, this.filteredItems.length);
+        if (State.videosGrid.mode === 'grid') {
+          window.scrollTo(0, 0);
+        } else {
+          const wrapper = this.listWrapper;
+          if (wrapper) wrapper.scrollTop = 0;
+        }
+        this.applyFiltersAndRender();
+      });
+    }
 
     const searchInput = Dom.get('videosSearchInput');
     if (searchInput) {
@@ -5290,7 +5069,8 @@ const ChannelVideos = {
         Dom.debounce(e => {
           State.videosGrid.q = e.target.value || '';
           if (State.isVideosGridView) {
-            window.scrollTo(0, 0);
+            if (State.videosGrid.mode === 'grid') window.scrollTo(0, 0);
+            else if (this.listWrapper) this.listWrapper.scrollTop = 0;
             this.applyFiltersAndRender();
           }
         }, 150)
@@ -6156,6 +5936,115 @@ const CustomDatePicker = {
   },
 };
 
+const ChannelPreloader = {
+  preloadedChannels: new Set(),
+  inProgress: new Map(),
+
+  async preloadAll(channelId, excludeTab = null) {
+    if (this.preloadedChannels.has(channelId)) return;
+
+    if (this.inProgress.has(channelId)) {
+      return this.inProgress.get(channelId);
+    }
+
+    const promise = this._doPreload(channelId, excludeTab);
+    this.inProgress.set(channelId, promise);
+
+    try {
+      await promise;
+      this.preloadedChannels.add(channelId);
+    } finally {
+      this.inProgress.delete(channelId);
+    }
+  },
+
+  async _doPreload(channelId, excludeTab) {
+    const tasks = [];
+
+    if (excludeTab !== 'combined') {
+      tasks.push(
+        this._preloadCombined(channelId).catch(err =>
+          console.warn('Failed to preload combined:', err)
+        )
+      );
+    }
+
+    if (excludeTab !== 'videos') {
+      tasks.push(
+        this._preloadVideos(channelId).catch(err =>
+          console.warn('Failed to preload videos:', err)
+        )
+      );
+    }
+
+    if (excludeTab !== 'rankings') {
+      tasks.push(
+        Rankings.prefetch(channelId).catch(err =>
+          console.warn('Failed to preload rankings:', err)
+        )
+      );
+    }
+
+    if (excludeTab !== 'gains') {
+      tasks.push(
+        Gains.prefetch(channelId).catch(err =>
+          console.warn('Failed to preload gains:', err)
+        )
+      );
+    }
+
+    await Promise.allSettled(tasks);
+  },
+
+  async _preloadCombined(channelId) {
+    const endpoint =
+      channelId === 'mrbeast'
+        ? Config.api.combinedHistory.mrbeast
+        : Config.api.combinedHistory.byChannel(channelId);
+
+    await Net.fetchJson(endpoint, {}, 10 * 60 * 1000);
+
+    await Promise.all([
+      Net.fetchJson(`${endpoint}?type=short`, {}, 10 * 60 * 1000).catch(
+        () => null
+      ),
+      Net.fetchJson(`${endpoint}?type=long`, {}, 10 * 60 * 1000).catch(
+        () => null
+      ),
+    ]);
+  },
+
+  async _preloadVideos(channelId) {
+    const url = `${Config.api.listing}?channel=${channelId}&filter=all`;
+    await Net.fetchJson(url, {}, 10 * 60 * 1000);
+  },
+
+  reset(channelId = null) {
+    if (channelId) {
+      this.preloadedChannels.delete(channelId);
+      this.inProgress.delete(channelId);
+    } else {
+      this.preloadedChannels.clear();
+      this.inProgress.clear();
+    }
+  },
+
+  trigger(channelId, currentTab) {
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(
+        () => {
+          this.preloadAll(channelId, currentTab);
+        },
+        { timeout: 2000 }
+      );
+    } else {
+      setTimeout(() => {
+        this.preloadAll(channelId, currentTab);
+      }, 500);
+    }
+  },
+};
+
 const Loader = {
   _loadPromises: new Map(),
   _loadedKey: null,
@@ -6167,8 +6056,6 @@ const Loader = {
       ScrollState.save('gains', State.currentChannel);
     } else if (State.isRankingsView) {
       ScrollState.save('rankings', State.currentChannel);
-    } else if (State.isListingView) {
-      ScrollState.save('listing', State.currentChannel);
     } else if (State.currentEntityId === State.currentChannel) {
       ScrollState.save('combined', State.currentChannel);
     } else {
@@ -6281,7 +6168,6 @@ const Loader = {
       State.currentChannel = channelId;
       State.isRankingsView = false;
       State.isGainsView = false;
-      State.isListingView = false;
       State.isVideosGridView = false;
 
       if (switchingChannels || !isNavigation) {
@@ -6339,21 +6225,7 @@ const Loader = {
             });
           }
 
-          if ('requestIdleCallback' in window) {
-            requestIdleCallback(() => {
-              CombinedMetricsFilter.prefetchData();
-              Rankings.prefetch(State.currentChannel);
-              Gains.prefetch(State.currentChannel);
-              Listing.prefetch(State.currentChannel);
-            });
-          } else {
-            setTimeout(() => {
-              CombinedMetricsFilter.prefetchData();
-              Rankings.prefetch(State.currentChannel);
-              Gains.prefetch(State.currentChannel);
-              Listing.prefetch(State.currentChannel);
-            }, 150);
-          }
+          ChannelPreloader.trigger(State.currentChannel, 'combined');
         } else {
           throw new Error('Invalid data format received');
         }
@@ -6416,32 +6288,50 @@ const Loader = {
 
       if (!switchingChannels && ScrollState.has('videos', channelId)) {
         const savedY = ScrollState.positions.get(`videos:${channelId}`) || 0;
-        const estimatedRowHeight = 280;
-        const columnsPerRow =
-          window.innerWidth > 1024
-            ? 4
-            : window.innerWidth > 768
-            ? 3
-            : window.innerWidth > 480
-            ? 2
-            : 1;
+        const mode = State.videosGrid.mode || 'grid';
 
-        const neededRows = Math.ceil(savedY / estimatedRowHeight);
-        const itemsToRender = Math.min(
-          (neededRows + 2) * columnsPerRow,
-          ChannelVideos.filteredItems.length
-        );
+        if (mode === 'grid') {
+          const estimatedRowHeight = 280;
+          const columnsPerRow =
+            window.innerWidth > 1024
+              ? 4
+              : window.innerWidth > 768
+              ? 3
+              : window.innerWidth > 480
+              ? 2
+              : 1;
 
-        if (itemsToRender > ChannelVideos.visibleCount) {
-          const prevCount = ChannelVideos.visibleCount;
-          ChannelVideos.visibleCount = itemsToRender;
-          ChannelVideos.renderVisible(prevCount);
+          const neededRows = Math.ceil(savedY / estimatedRowHeight);
+          const itemsToRender = Math.min(
+            (neededRows + 2) * columnsPerRow,
+            ChannelVideos.filteredItems.length
+          );
+
+          if (itemsToRender > ChannelVideos.visibleCount) {
+            const prevCount = ChannelVideos.visibleCount;
+            ChannelVideos.visibleCount = itemsToRender;
+            ChannelVideos.renderGridVisible(prevCount);
+          }
+
+          ScrollState.restore('videos', channelId);
+        } else {
+          const approxRowHeight = 56;
+          const rowsNeeded = Math.ceil(savedY / approxRowHeight) + 30;
+          const itemsToRender = Math.min(
+            rowsNeeded,
+            ChannelVideos.filteredItems.length
+          );
+          if (itemsToRender > ChannelVideos.visibleCount) {
+            const prevCount = ChannelVideos.visibleCount;
+            ChannelVideos.visibleCount = itemsToRender;
+            ChannelVideos.renderListVisible(prevCount);
+          }
+          const wrapper = Dom.get('videosListWrapper');
+          if (wrapper) wrapper.scrollTop = savedY;
         }
-
-        ScrollState.restore('videos', channelId);
       }
 
-      ChannelVideos.bindInfiniteScroll();
+      ChannelPreloader.trigger(State.currentChannel, 'videos');
 
       this._loadedKey = key;
     })();
@@ -6532,6 +6422,9 @@ const Loader = {
             '<div style="text-align:center;padding:20px;color:red;">Error loading rankings. Please try again.</div>';
         }
       }
+
+      ChannelPreloader.trigger(State.currentChannel, 'rankings');
+
       this._loadedKey = key;
     })();
 
@@ -6612,70 +6505,10 @@ const Loader = {
             '<div style="text-align:center;padding:20px;color:red;">Error loading gains. Please try again.</div>';
         }
       }
+
+      ChannelPreloader.trigger(State.currentChannel, 'gains');
+
       this._loadedKey = key;
-    })();
-
-    this._loadPromises.set(key, p);
-    try {
-      await p;
-    } finally {
-      this._loadPromises.delete(key);
-    }
-    return p;
-  },
-
-  async loadChannelListing(channelId, profileUrl, isNavigation = false) {
-    const key = `channel-list:${channelId}`;
-    if (this._loadPromises.has(key)) return this._loadPromises.get(key);
-
-    const p = (async () => {
-      this.saveCurrentScrollPosition();
-
-      const switchingChannels =
-        State.currentChannel && State.currentChannel !== channelId;
-
-      if (switchingChannels) {
-        ScrollState.clear('listing', channelId);
-      }
-
-      State.reset();
-      ChartModeDropdown.reset();
-      ChartModeDropdown.hide();
-
-      State.currentEntityId = channelId;
-      State.currentChannel = channelId;
-      State.isListingView = true;
-
-      if (switchingChannels || !isNavigation) {
-        window.scrollTo(0, 0);
-      }
-
-      const headerTitle = document.querySelector('header h1');
-      if (headerTitle) headerTitle.textContent = 'Video List';
-
-      await this.setupProfile(profileUrl);
-      this.setupChannelHeader(channelId);
-
-      Dom.updateUrl('list', channelId, isNavigation);
-      Dom.setMainView('listing');
-      CombinedMetricsFilter.hide();
-
-      const exportControls = document.querySelector('.export-controls');
-      if (exportControls) exportControls.style.display = 'none';
-
-      Listing.applySettings();
-      await Listing.refresh();
-
-      if (!switchingChannels && ScrollState.has('listing', channelId)) {
-        requestAnimationFrame(() => {
-          const tableWrapper = document.querySelector('.listing-table-wrapper');
-          if (tableWrapper) {
-            const savedY =
-              ScrollState.positions.get(`listing:${channelId}`) || 0;
-            tableWrapper.scrollTop = savedY;
-          }
-        });
-      }
     })();
 
     this._loadPromises.set(key, p);
@@ -6709,7 +6542,6 @@ const Loader = {
       State.currentChannel = channelId;
       State.isRankingsView = false;
       State.isGainsView = false;
-      State.isListingView = false;
       State.isVideosGridView = false;
 
       State.currentTab = 'videos';
@@ -6794,19 +6626,7 @@ const Loader = {
             });
           }
 
-          const prefetchAll = () => {
-            try {
-              Rankings.prefetch(State.currentChannel);
-              Gains.prefetch(State.currentChannel);
-              Listing.prefetch(State.currentChannel);
-            } catch {}
-          };
-
-          if ('requestIdleCallback' in window) {
-            requestIdleCallback(prefetchAll);
-          } else {
-            setTimeout(prefetchAll, 150);
-          }
+          ChannelPreloader.trigger(State.currentChannel, null);
 
           const canPrefetch7dh =
             State.currentEntityId !== State.currentChannel &&
@@ -6869,8 +6689,7 @@ const Router = {
     const channelParam = params.get('channel');
     const tab = params.get('tab');
 
-    const normTab =
-      tab === 'list' ? 'listing' : tab === 'videos' ? 'videos' : tab;
+    const normTab = tab === 'list' || tab === 'listing' ? 'videos' : tab;
 
     return { data, channel: channelParam, tab: normTab };
   },
@@ -6894,8 +6713,6 @@ const Router = {
       await Loader.loadChannelRankings(ch.id, ch.avatar, false);
     } else if (State.currentTab === 'gains') {
       await Loader.loadChannelGains(ch.id, ch.avatar, false);
-    } else if (State.currentTab === 'listing') {
-      await Loader.loadChannelListing(ch.id, ch.avatar, false);
     } else {
       await Loader.loadChannelCombined(ch.id, ch.avatar, false);
       ChannelTabs.setActive('combined');
@@ -6926,12 +6743,7 @@ const Router = {
       if (!key) return false;
       const k = String(key).toLowerCase();
       return (
-        k === 'combined' ||
-        k === 'videos' ||
-        k === 'rankings' ||
-        k === 'gains' ||
-        k === 'listing' ||
-        k === 'list'
+        k === 'combined' || k === 'videos' || k === 'rankings' || k === 'gains'
       );
     };
 
@@ -6954,12 +6766,6 @@ const Router = {
         ChannelTabs.setActive('gains');
         return;
       }
-      if (t === 'listing') {
-        await Loader.loadChannelListing(ch.id, ch.avatar, isNavigation);
-        ChannelTabs.setActive('listing');
-        return;
-      }
-
       await Loader.loadChannelCombined(ch.id, ch.avatar, isNavigation);
       ChannelTabs.setActive('combined');
       return;
@@ -6984,12 +6790,6 @@ const Router = {
         ChannelTabs.setActive('gains');
         return;
       }
-      if (t === 'listing') {
-        await Loader.loadChannelListing(ch.id, ch.avatar, isNavigation);
-        ChannelTabs.setActive('listing');
-        return;
-      }
-
       await Loader.loadChannelCombined(ch.id, ch.avatar, isNavigation);
       ChannelTabs.setActive('combined');
       return;
@@ -7019,8 +6819,6 @@ const Router = {
   },
 
   start() {
-    ChannelsBar.create();
-
     this.routeFromUrl(true);
 
     window.addEventListener('popstate', () => this.handlePop());
@@ -7104,7 +6902,6 @@ const App = {
       MetricCards.init();
       Rankings.init();
       Gains.init();
-      Listing.init();
       ChannelVideos.bindControls();
       Router.start();
     } catch (error) {

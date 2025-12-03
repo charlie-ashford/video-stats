@@ -668,6 +668,30 @@ header h1 {
   box-shadow: 0 0 0 4px rgba(25, 118, 210, 0.2);
 }
 
+.control-select {
+  height: 40px;
+  padding: 0.4rem 0.75rem;
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--card-background-color);
+  color: var(--text-color);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 180px;
+}
+
+.control-select:hover {
+  background: var(--hover-card-background);
+  border-color: var(--hover-border-color);
+}
+
+.control-select:focus {
+  outline: none;
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.2);
+}
+
 .video-stats-view {
   width: 100%;
   max-width: 1280px;
@@ -1602,6 +1626,14 @@ header h1 {
   box-shadow: 0 4px 12px rgba(219, 66, 31, 0.3);
 }
 
+#videosSortDirBtn.active,
+#videosViewToggle.active {
+  background-color: var(--primary-color);
+  color: #ffffff;
+  border-color: var(--primary-color);
+  box-shadow: 0 4px 12px rgba(219, 66, 31, 0.3);
+}
+
 .rankings-header,
 .gains-header {
   text-align: center;
@@ -1936,9 +1968,16 @@ header h1 {
 .video-card-meta {
   display: flex;
   gap: 0.75rem;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   color: var(--muted-text-color);
-  white-space: nowrap;
+  flex-wrap: wrap; 
+}
+
+.video-card-meta span {
+  white-space: nowrap; 
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .video-card-badges {
@@ -2058,7 +2097,6 @@ header h1 {
 }
 
 .listing-table th.sortable {
-  cursor: pointer;
   position: sticky;
   user-select: none;
   padding-right: 2rem;

@@ -190,29 +190,43 @@
             </button>
           </div>
 
-          <div class="button-group">
+          <div class="button-group sort-group">
             <span class="button-group-label">Sort:</span>
-            <button
-              class="control-button videos-sort-button active"
-              data-sort="uploadTime"
-              data-dir="desc"
+            <select
+              id="videosSortSelect"
+              class="control-select"
+              aria-label="Sort videos"
             >
-              Newest
-            </button>
+              <option value="uploadTime" selected>Upload Date</option>
+              <option value="views">Views</option>
+              <option value="likes">Likes</option>
+              <option value="comments">Comments</option>
+              <option value="duration">Duration</option>
+              <option value="title">Title</option>
+              <option value="isShort">Type</option>
+            </select>
             <button
-              class="control-button videos-sort-button"
-              data-sort="views"
+              id="videosSortDirBtn"
+              class="control-button"
+              aria-label="Toggle sort direction"
               data-dir="desc"
+              title="Sort: Descending"
             >
-              Views
+              <i class="fas fa-arrow-down-wide-short"></i>
             </button>
-            <button
-              class="control-button videos-sort-button"
-              data-sort="likes"
-              data-dir="desc"
-            >
-              Likes
-            </button>
+
+            <div class="button-group" style="margin-left: 0.25rem">
+              <span class="button-group-label">View:</span>
+              <button
+                id="videosViewToggle"
+                class="control-button"
+                aria-label="Toggle grid/list view"
+                data-mode="grid"
+                title="Switch to list view"
+              >
+                <i class="fas fa-th"></i>
+              </button>
+            </div>
           </div>
 
           <div class="button-group search-group">
@@ -243,6 +257,30 @@
           style="display: none"
         >
           No videos match the current filters.
+        </div>
+
+        <div
+          id="videosListWrapper"
+          class="listing-table-wrapper"
+          style="display: none"
+        >
+          <table class="listing-table" aria-label="Videos list">
+            <thead>
+              <tr>
+                <th class="no-sort" style="width: 50px; text-align: center">
+                  #
+                </th>
+                <th class="sortable" data-key="title">Video</th>
+                <th class="sortable" data-key="views">Views</th>
+                <th class="sortable" data-key="likes">Likes</th>
+                <th class="sortable" data-key="comments">Comments</th>
+                <th class="sortable" data-key="duration">Duration</th>
+                <th class="sortable" data-key="uploadTime">Upload Date</th>
+                <th class="sortable" data-key="isShort">Type</th>
+              </tr>
+            </thead>
+            <tbody id="videosListTbody"></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -520,76 +558,6 @@
           <p class="gains-subtitle">Likes in Last 24 Hours</p>
         </div>
         <div class="gains-list" id="gainsList"></div>
-      </div>
-    </section>
-
-    <section
-      id="listingView"
-      class="listing-view"
-      style="display: none"
-      aria-labelledby="tab-listing"
-    >
-      <div class="listing-controls">
-        <div class="gains-button-groups" style="margin-bottom: 1rem">
-          <div class="button-group">
-            <span class="button-group-label">Video Type:</span>
-            <button
-              class="control-button listing-filter-button active"
-              data-filter="all"
-            >
-              All
-            </button>
-            <button
-              class="control-button listing-filter-button"
-              data-filter="long"
-            >
-              Long
-            </button>
-            <button
-              class="control-button listing-filter-button"
-              data-filter="short"
-            >
-              Shorts
-            </button>
-          </div>
-          <div class="button-group search-group">
-            <span class="button-group-label">Search:</span>
-            <input
-              id="listingSearchInput"
-              type="text"
-              placeholder="Search by title..."
-              class="listing-search-input"
-              aria-label="Search by title"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div class="listing-panel">
-        <div class="listing-header">
-          <h2>All Channel Videos</h2>
-          <p id="listingSubtitle" class="listing-subtitle"></p>
-        </div>
-
-        <div class="listing-table-wrapper">
-          <table class="listing-table">
-            <thead>
-              <tr>
-                <th class="no-sort" style="width: 50px; text-align: center">
-                  #
-                </th>
-                <th class="sortable" data-key="title">Video</th>
-                <th class="sortable" data-key="views">Views</th>
-                <th class="sortable" data-key="likes">Likes</th>
-                <th class="sortable" data-key="comments">Comments</th>
-                <th class="sortable" data-key="duration">Duration</th>
-                <th class="sortable" data-key="uploadTime">Upload Date</th>
-                <th class="sortable" data-key="isShort">Type</th>
-              </tr>
-            </thead>
-            <tbody id="listingTbody"></tbody>
-          </table>
-        </div>
       </div>
     </section>
 

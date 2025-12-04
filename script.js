@@ -3540,13 +3540,10 @@ const Export = {
 
       const dailyAtMidnight = new Map();
       estEntries.forEach(e => {
-        if (
-          e.dt.hour === 0 &&
-          e.dt.minute === 0 &&
-          e.dt.second === 0 &&
-          e.dt.millisecond === 0
-        ) {
-          dailyAtMidnight.set(e.dt.toFormat('yyyy-MM-dd'), e);
+        const dayKey = e.dt.toFormat('yyyy-MM-dd');
+        const existing = dailyAtMidnight.get(dayKey);
+        if (!existing || e.dt.toMillis() < existing.dt.toMillis()) {
+          dailyAtMidnight.set(dayKey, e);
         }
       });
 

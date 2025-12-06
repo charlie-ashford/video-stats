@@ -3653,6 +3653,67 @@ const Export = {
     }
   },
 
+  videosListToCsv() {
+    if (
+      !ChannelVideos.filteredItems ||
+      ChannelVideos.filteredItems.length === 0
+    ) {
+      console.error('No videos available for export');
+      return;
+    }
+
+    const videos = ChannelVideos.filteredItems;
+
+    let csv = 'data:text/csv;charset=utf-8,';
+    csv +=
+      'Video ID,Title,Views,Likes,Comments,Duration,Upload Date (EST),Type\n';
+
+    videos.forEach(video => {
+      const title = (video.title || '').replace(/"/g, '""');
+      const views = video.views || 0;
+      const likes = video.likes || 0;
+      const comments = video.comments || 0;
+      const duration = video.duration || '';
+      const uploadDate = video.uploadTime
+        ? luxon.DateTime.fromISO(video.uploadTime)
+            .setZone('America/New_York')
+            .toFormat('yyyy-MM-dd HH:mm:ss')
+        : '';
+      const type = video.isShort ? 'Short' : 'Long';
+
+      csv += `"${video.videoId}","${title}",${views},${likes},${comments},"${duration}","${uploadDate}","${type}"\n`;
+    });
+
+    const filename = `${State.currentChannel}-videos.csv`;
+
+    this.download(csv, filename);
+  },
+
+  updateMenuForContext() {
+    const menu = Dom.get('exportMenu');
+    if (!menu) return;
+
+    if (State.isVideosGridView && State.videosGrid.mode === 'list') {
+      menu.innerHTML = `
+        <button class="export-menu-item" data-mode="videos">
+          <span class="item-icon"><i class="fas fa-list"></i></span>
+          Export Videos List
+        </button>
+      `;
+    } else {
+      menu.innerHTML = `
+        <button class="export-menu-item" data-mode="hourly">
+          <span class="item-icon"><i class="fas fa-clock"></i></span>
+          Export Hourly CSV
+        </button>
+        <button class="export-menu-item" data-mode="daily">
+          <span class="item-icon"><i class="fas fa-calendar-day"></i></span>
+          Export Daily CSV
+        </button>
+      `;
+    }
+  },
+
   init() {
     const exportBtn = Dom.get('exportButton');
     const menu = Dom.get('exportMenu');
@@ -3675,13 +3736,17 @@ const Export = {
         e.preventDefault();
         e.stopPropagation();
         if (menu.classList.contains('show')) closeMenu(false);
-        else openMenu(true);
+        else {
+          this.updateMenuForContext();
+          openMenu(true);
+        }
       };
 
       exportBtn.addEventListener('click', toggleMenu);
       exportBtn.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
+          this.updateMenuForContext();
           openMenu(true);
         } else if (e.key === 'Escape') {
           closeMenu();
@@ -3691,6 +3756,15 @@ const Export = {
       menu.addEventListener('click', e => {
         const btn = e.target.closest('.export-menu-item');
         if (!btn) return;
+
+        if (State.isVideosGridView && State.videosGrid.mode === 'list') {
+          if (btn.dataset.mode === 'videos') {
+            closeMenu(false);
+            this.videosListToCsv();
+            return;
+          }
+        }
+
         const mode = btn.dataset.mode === 'daily' ? 'daily' : 'hourly';
         closeMenu(false);
         this.toCsv(mode);
@@ -4768,7 +4842,16 @@ const ChannelVideos = {
       this.unbindGridInfiniteScroll();
     }
 
+    const exportControls = document.querySelector('.export-controls');
+    if (exportControls) {
+      exportControls.style.display = mode === 'list' ? 'flex' : 'none';
+    }
+
     this.updateSortControlsUI();
+
+    if (typeof Export.updateMenuForContext === 'function') {
+      Export.updateMenuForContext();
+    }
   },
 
   renderGridVisible(startIndex = 0) {

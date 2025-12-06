@@ -6174,7 +6174,16 @@ const Loader = {
     const name = Dom.get('channelName');
 
     if (avatar) avatar.src = ch.avatar;
-    if (name) name.textContent = ch.name;
+    if (name) {
+      const match = ch.avatar.match(/\/([^\/]+)\/avatar/);
+      const youtubeChannelId = match ? match[1] : null;
+      
+      if (youtubeChannelId) {
+        name.innerHTML = `<a href="https://www.youtube.com/channel/${youtubeChannelId}" target="_blank" rel="noopener">${ch.name}</a>`;
+      } else {
+        name.textContent = ch.name;
+      }
+    }
     if (header) header.style.display = 'flex';
 
     ChannelsBar.highlight(channelId);

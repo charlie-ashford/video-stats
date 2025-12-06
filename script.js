@@ -109,6 +109,11 @@ const Config = {
       name: 'UR · Cristiano',
       avatar: 'https://www.banner.yt/UCtxD0x6AuNNqdXO9Wp5GHew/avatar',
     },
+    {
+      id: 'blackpink',
+      name: 'BLACKPINK',
+      avatar: 'https://www.banner.yt/UCOmHUn--16B90oW2L6FRR3A/avatar',
+    },
   ],
   colors: {
     views: '#db421f',

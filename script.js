@@ -193,19 +193,31 @@ const Config = {
 const Net = {
   inflight: new Map(),
   cache: new Map(),
-  defaultTtl: 10 * 60 * 1000,
+  defaultTtl: 60 * 60 * 1000,
+  scheduledClear: null,
 
-  getTenMinuteAlignedExpiryMs(minMs = 10000) {
-    const nowMs = Date.now();
-    const nowEst = luxon.DateTime.now().setZone('America/New_York');
-    const remainder = nowEst.minute % 10;
-    const add = remainder === 0 ? 10 : 10 - remainder;
-    const nextSlot = nowEst.plus({ minutes: add }).startOf('minute');
-    const targetMs = nextSlot.toMillis();
-    return Math.max(targetMs, nowMs + minMs);
+  scheduleNextClear() {
+    if (this.scheduledClear) {
+      clearTimeout(this.scheduledClear);
+    }
+
+    const now = luxon.DateTime.now().setZone('America/New_York');
+    const nextClear = now
+      .plus({ hours: 1 })
+      .startOf('hour')
+      .plus({ minutes: 1 });
+    const msUntilClear = nextClear.toMillis() - Date.now();
+
+    this.scheduledClear = setTimeout(() => {
+      console.log('[Cache] Clearing for backend update');
+      this.cache.clear();
+      this.scheduleNextClear();
+    }, msUntilClear);
+
+    console.log(`[Cache] Will clear at ${nextClear.toFormat('HH:mm')}`);
   },
 
-  async fetchJson(url, options = {}, _ttlIgnored = null) {
+  async fetchJson(url, options = {}) {
     const now = Date.now();
     const cached = this.cache.get(url);
     if (cached && now < cached.expiry) {
@@ -224,7 +236,7 @@ const Net = {
         return res.json();
       })
       .then(json => {
-        const expiry = this.getTenMinuteAlignedExpiryMs();
+        const expiry = Date.now() + this.defaultTtl;
         this.cache.set(url, { expiry, data: json });
         return json;
       })
@@ -257,6 +269,8 @@ const Net = {
     this.inflight.clear();
   },
 };
+
+Net.scheduleNextClear();
 
 const SessionSettings = {
   setRankingsSettings(settings) {
@@ -3274,10 +3288,10 @@ const Gains = {
       const isPositive = change >= 0;
       const arrow = isPositive ? '↑' : '↓';
       const changeClass = isPositive ? 'positive' : 'negative';
-      const sign = isPositive ? '+' : '-';
+      const sign = isPositive ? '+' : '';
 
       const formattedCurrent = currentGain.toLocaleString();
-      const formattedChange = Math.abs(change).toLocaleString();
+      const formattedChange = change.toLocaleString();
       const formattedPercentage =
         percentage !== null
           ? `${percentage >= 0 ? '+' : ''}${percentage.toFixed(1)}%`
@@ -4753,6 +4767,7 @@ const ChannelVideos = {
     State.videosGrid.items = Array.isArray(videos) ? videos : [];
 
     this.applyFiltersAndRender();
+    ScrollToTop.show();
   },
 
   updateSortControlsUI() {
@@ -4856,6 +4871,11 @@ const ChannelVideos = {
 
     if (typeof Export.updateMenuForContext === 'function') {
       Export.updateMenuForContext();
+    }
+
+    ScrollToTop.refresh();
+    if (State.isVideosGridView) {
+      ScrollToTop.bindScrollEvents();
     }
   },
 
@@ -6177,7 +6197,7 @@ const Loader = {
     if (name) {
       const match = ch.avatar.match(/\/([^\/]+)\/avatar/);
       const youtubeChannelId = match ? match[1] : null;
-      
+
       if (youtubeChannelId) {
         name.innerHTML = `<a href="https://www.youtube.com/channel/${youtubeChannelId}" target="_blank" rel="noopener">${ch.name}</a>`;
       } else {
@@ -6257,6 +6277,7 @@ const Loader = {
       }
 
       State.reset();
+      ScrollToTop.hide();
       ChartModeDropdown.reset();
       State.currentEntityId = channelId;
       State.currentChannel = channelId;
@@ -6356,6 +6377,7 @@ const Loader = {
       }
 
       State.reset();
+      ScrollToTop.show();
       ChartModeDropdown.reset();
       ChartModeDropdown.hide();
 
@@ -6453,6 +6475,7 @@ const Loader = {
       }
 
       State.reset();
+      ScrollToTop.hide();
       ChartModeDropdown.reset();
       ChartModeDropdown.hide();
 
@@ -6545,6 +6568,7 @@ const Loader = {
       }
 
       State.reset();
+      ScrollToTop.hide();
       ChartModeDropdown.reset();
       ChartModeDropdown.hide();
 
@@ -6630,6 +6654,7 @@ const Loader = {
       }
 
       State.reset();
+      ScrollToTop.hide();
       ChartModeDropdown.reset();
 
       State.currentEntityId = videoId;
@@ -6773,6 +6798,122 @@ const Loader = {
     }
 
     return p;
+  },
+};
+
+const ScrollToTop = {
+  button: null,
+  scrollThreshold: 300,
+  _scrollHandler: null,
+
+  create() {
+    if (this.button) return this.button;
+
+    this.button = Dom.create('button', 'scroll-to-top');
+    this.button.innerHTML = '<i class="fas fa-arrow-up"></i>';
+    this.button.title = 'Scroll to top';
+    this.button.setAttribute('aria-label', 'Scroll to top');
+    this.button.setAttribute('type', 'button');
+
+    this.button.addEventListener('click', () => {
+      this.scrollToTop();
+    });
+
+    document.body.appendChild(this.button);
+    return this.button;
+  },
+
+  scrollToTop() {
+    if (State.isVideosGridView && State.videosGrid.mode === 'list') {
+      const wrapper = Dom.get('videosListWrapper');
+      if (wrapper) {
+        wrapper.scrollTo({
+          top: 0,
+          behavior: 'smooth',
+        });
+      }
+    } else {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth',
+      });
+    }
+  },
+
+  updateVisibility() {
+    if (!this.button) return;
+
+    const shouldShow = State.isVideosGridView;
+
+    if (!shouldShow) {
+      this.button.classList.remove('show');
+      return;
+    }
+
+    let scrolled = 0;
+    if (State.videosGrid.mode === 'list') {
+      const wrapper = Dom.get('videosListWrapper');
+      scrolled = wrapper ? wrapper.scrollTop : 0;
+    } else {
+      scrolled = window.scrollY || window.pageYOffset || 0;
+    }
+
+    if (scrolled > this.scrollThreshold) {
+      this.button.classList.add('show');
+    } else {
+      this.button.classList.remove('show');
+    }
+  },
+
+  bindScrollEvents() {
+    this.unbindScrollEvents();
+
+    this._scrollHandler = () => {
+      this.updateVisibility();
+    };
+
+    if (State.videosGrid.mode === 'list') {
+      const wrapper = Dom.get('videosListWrapper');
+      if (wrapper) {
+        wrapper.addEventListener('scroll', this._scrollHandler, {
+          passive: true,
+        });
+      }
+    } else {
+      window.addEventListener('scroll', this._scrollHandler, { passive: true });
+    }
+  },
+
+  unbindScrollEvents() {
+    if (this._scrollHandler) {
+      window.removeEventListener('scroll', this._scrollHandler);
+      const wrapper = Dom.get('videosListWrapper');
+      if (wrapper) {
+        wrapper.removeEventListener('scroll', this._scrollHandler);
+      }
+      this._scrollHandler = null;
+    }
+  },
+
+  show() {
+    if (!this.button) this.create();
+    this.bindScrollEvents();
+    this.updateVisibility();
+  },
+
+  hide() {
+    if (this.button) {
+      this.button.classList.remove('show');
+    }
+    this.unbindScrollEvents();
+  },
+
+  refresh() {
+    if (State.isVideosGridView) {
+      this.show();
+    } else {
+      this.hide();
+    }
   },
 };
 

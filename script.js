@@ -137,7 +137,7 @@ const Config = {
   gains: {
     defaultPeriod: 1,
     defaultFilter: 'long',
-    defaultMetric: 'likes',
+    defaultMetric: 'views',
     defaultCount: 10,
     minCount: 3,
     maxCount: 50,

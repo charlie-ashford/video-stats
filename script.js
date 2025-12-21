@@ -3115,7 +3115,7 @@ const Gains = {
 
   async fetchBatch(channelId) {
     if (this.batchCache.has(channelId)) return this.batchCache.get(channelId);
-    const url = `${Config.api.gainsBatch}?channel=${channelId}&metrics=views,likes`;
+    const url = `${Config.api.gainsBatch}?channel=${channelId}&metrics=views,likes,comments`;
     try {
       const data = await Net.fetchJson(url, {}, 10 * 60 * 1000);
       if (data && data.videos && data.gainsByMetric) {
@@ -3415,13 +3415,13 @@ const Gains = {
   },
 
   bindButtons() {
-    document.querySelectorAll('.control-button').forEach(button => {
+    document.querySelectorAll('#gainsView .control-button').forEach(button => {
       button.addEventListener('click', e => {
         const btn = e.currentTarget;
         const group = btn.dataset.group;
 
         document
-          .querySelectorAll(`.control-button[data-group="${group}"]`)
+          .querySelectorAll(`#gainsView .control-button[data-group="${group}"]`)
           .forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
 
@@ -3485,7 +3485,7 @@ const Gains = {
     if (countValue) countValue.textContent = State.gainsSettings.count;
 
     document
-      .querySelectorAll('.control-button[data-group="period"]')
+      .querySelectorAll('#gainsView .control-button[data-group="period"]')
       .forEach(btn => {
         btn.classList.toggle(
           'active',
@@ -3494,7 +3494,7 @@ const Gains = {
       });
 
     document
-      .querySelectorAll('.control-button[data-group="filter"]')
+      .querySelectorAll('#gainsView .control-button[data-group="filter"]')
       .forEach(btn => {
         btn.classList.toggle(
           'active',
@@ -3503,7 +3503,7 @@ const Gains = {
       });
 
     document
-      .querySelectorAll('.control-button[data-group="metric"]')
+      .querySelectorAll('#gainsView .control-button[data-group="metric"]')
       .forEach(btn => {
         btn.classList.toggle(
           'active',
@@ -3512,7 +3512,7 @@ const Gains = {
       });
 
     document
-      .querySelectorAll('.control-button[data-group="sort"]')
+      .querySelectorAll('#gainsView .control-button[data-group="sort"]')
       .forEach(btn => {
         btn.classList.toggle(
           'active',

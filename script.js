@@ -128,7 +128,7 @@ const Config = {
   },
   rankings: {
     defaultCount: 10,
-    maxCount: 50,
+    maxCount: 100,
     defaultHours: 24,
     maxHours: 168,
     defaultFilter: 'long',
@@ -140,7 +140,7 @@ const Config = {
     defaultMetric: 'views',
     defaultCount: 10,
     minCount: 3,
-    maxCount: 50,
+    maxCount: 100,
     defaultSortMode: 'absolute',
   },
 
@@ -2802,7 +2802,7 @@ const Rankings = {
 
     const recent = withData
       .sort((a, b) => new Date(b.uploadTime) - new Date(a.uploadTime))
-      .slice(0, Math.min(videoCount, 50));
+      .slice(0, Math.min(videoCount, 100));
 
     return recent.sort((a, b) => b.metricAtPeriod - a.metricAtPeriod);
   },
@@ -3200,7 +3200,7 @@ const Gains = {
       filter,
       period,
       sortMode,
-      50
+      100
     );
     this.allVideosCache.set(cacheKey, list);
     return list;

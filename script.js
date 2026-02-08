@@ -2174,8 +2174,8 @@ const Charts = {
       CombinedMetricsFilter?.state?.filterMode === 'short'
         ? ' • Shorts'
         : CombinedMetricsFilter?.state?.filterMode === 'long'
-        ? ' • Longform'
-        : '';
+          ? ' • Longform'
+          : '';
 
     let chartTitle;
     if (isHourly) {
@@ -2617,18 +2617,18 @@ const Tables = {
       <td data-label="Date (EST)">${dateString}, ${timeString}</td>
       <td data-label="Views">${Math.round(currentData.views).toLocaleString()}
         <span class="change ${changes.views.class}">(${
-      changes.views.change
-    })</span></td>
+          changes.views.change
+        })</span></td>
       <td data-label="Likes">${Math.round(currentData.likes).toLocaleString()}
         <span class="change ${changes.likes.class}">(${
-      changes.likes.change
-    })</span></td>
+          changes.likes.change
+        })</span></td>
       <td data-label="Comments">${Math.round(
         currentData.comments
       ).toLocaleString()}
         <span class="change ${changes.comments.class}">(${
-      changes.comments.change
-    })</span></td>
+          changes.comments.change
+        })</span></td>
     `;
     tableBody.insertBefore(row, tableBody.firstChild);
   },
@@ -2658,18 +2658,18 @@ const Tables = {
            entry.views
          ).toLocaleString()}            
             <span class="change ${changes.views.class}">(${
-          changes.views.change
-        })</span></td>
+              changes.views.change
+            })</span></td>
           <td data-label="Likes">${Math.round(entry.likes).toLocaleString()}
             <span class="change ${changes.likes.class}">(${
-          changes.likes.change
-        })</span></td>
+              changes.likes.change
+            })</span></td>
           <td data-label="Comments">${Math.round(
             entry.comments
           ).toLocaleString()}
             <span class="change ${changes.comments.class}">(${
-          changes.comments.change
-        })</span></td>
+              changes.comments.change
+            })</span></td>
         `;
         frag.appendChild(row);
         i--;
@@ -2852,8 +2852,8 @@ const Rankings = {
       item.innerHTML = `
         <div class="ranking-position">${index + 1}</div>
         <img class="ranking-thumbnail" src="${video.thumbnail}" alt="${
-        video.title
-      }"
+          video.title
+        }"
           onerror="this.style.display='none'" loading="lazy">
         <div class="ranking-info">
           <div class="ranking-title">${video.title}</div>
@@ -3301,25 +3301,25 @@ const Gains = {
         State.gainsSettings.period === 0
           ? 'in last 1h'
           : State.gainsSettings.period === 1
-          ? 'in last 24h'
-          : State.gainsSettings.period === 7
-          ? 'in last 7d'
-          : 'in last 30d';
+            ? 'in last 24h'
+            : State.gainsSettings.period === 7
+              ? 'in last 7d'
+              : 'in last 30d';
 
       const periodLabelGain =
         State.gainsSettings.period === 0
           ? '1h'
           : State.gainsSettings.period === 1
-          ? '24h'
-          : State.gainsSettings.period === 7
-          ? '7d'
-          : '30d';
+            ? '24h'
+            : State.gainsSettings.period === 7
+              ? '7d'
+              : '30d';
 
       item.innerHTML = `
         <div class="gains-position">${index + 1}</div>
         <img class="gains-thumbnail" src="${video.thumbnail}" alt="${
-        video.title
-      }"
+          video.title
+        }"
           onerror="this.style.display='none'" loading="lazy">
         <div class="gains-info">
           <div class="gains-title">${video.title}</div>
@@ -3365,8 +3365,8 @@ const Gains = {
       State.gainsSettings.period === 0
         ? '1 Hour'
         : State.gainsSettings.period === 1
-        ? '24 Hours'
-        : `${State.gainsSettings.period} Days`;
+          ? '24 Hours'
+          : `${State.gainsSettings.period} Days`;
     if (subtitle) {
       const sortText =
         State.gainsSettings.sortMode === 'percent' ? '% Increase' : 'Total';
@@ -3632,13 +3632,40 @@ const Export = {
     document.body.removeChild(link);
   },
 
+  getExportRawData() {
+    const rawData = Array.isArray(State.rawData) ? State.rawData : [];
+    const isChannelContext = State.currentEntityId === State.currentChannel;
+    if (!isChannelContext) return rawData;
+
+    const filterMode = CombinedMetricsFilter?.state?.filterMode;
+    if (filterMode === 'short') {
+      const shortRaw = CombinedMetricsFilter?.state?.shortRaw;
+      if (Array.isArray(shortRaw) && shortRaw.length) return shortRaw;
+    } else if (filterMode === 'long') {
+      const longRaw = CombinedMetricsFilter?.state?.longRaw;
+      if (Array.isArray(longRaw) && longRaw.length) return longRaw;
+    }
+
+    return rawData;
+  },
+
+  getExportTypeSuffix() {
+    const isChannelContext = State.currentEntityId === State.currentChannel;
+    if (!isChannelContext) return '';
+    const filterMode = CombinedMetricsFilter?.state?.filterMode;
+    if (filterMode === 'short') return '-short';
+    if (filterMode === 'long') return '-long';
+    return '';
+  },
+
   toCsv(mode = 'hourly') {
-    if (!State.rawData || !Array.isArray(State.rawData)) {
+    const rawData = this.getExportRawData();
+    if (!rawData || !Array.isArray(rawData)) {
       console.error('No data available for export');
       return;
     }
-    const useTimestamp = !!State.rawData[0]?.timestamp;
-    const timestamps = State.rawData
+    const useTimestamp = !!rawData[0]?.timestamp;
+    const timestamps = rawData
       .filter(entry => {
         const timeField = useTimestamp ? entry.timestamp : entry.time;
         return (
@@ -3668,7 +3695,11 @@ const Export = {
     const csvContent = this.generateCsv(timestamps, mode);
     if (csvContent) {
       const suffix = mode === 'daily' ? '-daily' : '-hourly';
-      this.download(csvContent, `${State.currentEntityId}${suffix}.csv`);
+      const typeSuffix = this.getExportTypeSuffix();
+      this.download(
+        csvContent,
+        `${State.currentEntityId}${typeSuffix}${suffix}.csv`
+      );
     }
   },
 
@@ -6412,10 +6443,10 @@ const Loader = {
             window.innerWidth > 1024
               ? 4
               : window.innerWidth > 768
-              ? 3
-              : window.innerWidth > 480
-              ? 2
-              : 1;
+                ? 3
+                : window.innerWidth > 480
+                  ? 2
+                  : 1;
 
           const neededRows = Math.ceil(savedY / estimatedRowHeight);
           const itemsToRender = Math.min(

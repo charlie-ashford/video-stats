@@ -1,4 +1,3 @@
-
 const Config = {
   api: {
     baseUrl: 'https://api.communitrics.com',

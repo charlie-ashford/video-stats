@@ -3622,6 +3622,49 @@ const Export = {
     return csv;
   },
 
+  generateHourlyGridCsv(hourlyData, metric) {
+    if (!hourlyData?.dates?.length || !hourlyData?.data) return '';
+
+    const dates = hourlyData.dates.filter(d => hourlyData.data[d]?.[metric]);
+    if (dates.length === 0) return '';
+
+    const dateLabels = dates.map(d =>
+      luxon.DateTime.fromISO(d, { zone: 'America/New_York' }).toFormat('MMM d')
+    );
+
+    const hourLabels = [];
+    for (let h = 0; h < 24; h++) {
+      const period = h < 12 ? 'AM' : 'PM';
+      const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      hourLabels.push(`${hour12}:00 ${period}`);
+    }
+
+    let csv = 'data:text/csv;charset=utf-8,';
+    csv += `Hour (EST),${dateLabels.join(',')}\n`;
+
+    for (let h = 0; h < 24; h++) {
+      const values = dates.map(d => {
+        const val = hourlyData.data[d][metric][h];
+        return val != null ? val : '';
+      });
+      csv += `${hourLabels[h]},${values.join(',')}\n`;
+    }
+
+    return csv;
+  },
+
+  hourlyGridToCsv() {
+    if (!State.hourlyData?.dates?.length) {
+      console.error('No hourly data available for grid export');
+      return;
+    }
+    const metric = State.getMetricName();
+    const csvContent = this.generateHourlyGridCsv(State.hourlyData, metric);
+    if (csvContent) {
+      this.download(csvContent, `${State.currentEntityId}-7dh-grid.csv`);
+    }
+  },
+
   download(csvContent, filename) {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -3750,6 +3793,13 @@ const Export = {
           Export Videos List
         </button>
       `;
+    } else if (State.isHourlyMode && State.currentChartMode === '7dh') {
+      menu.innerHTML = `
+        <button class="export-menu-item" data-mode="7dh-grid">
+          <span class="item-icon"><i class="fas fa-table"></i></span>
+          Export Grid CSV
+        </button>
+      `;
     } else {
       menu.innerHTML = `
         <button class="export-menu-item" data-mode="hourly">
@@ -3813,6 +3863,12 @@ const Export = {
             this.videosListToCsv();
             return;
           }
+        }
+
+        if (btn.dataset.mode === '7dh-grid') {
+          closeMenu(false);
+          this.hourlyGridToCsv();
+          return;
         }
 
         const mode = btn.dataset.mode === 'daily' ? 'daily' : 'hourly';

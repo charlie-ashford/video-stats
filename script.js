@@ -3629,7 +3629,7 @@ const Export = {
     if (dates.length === 0) return '';
 
     const dateLabels = dates.map(d =>
-      luxon.DateTime.fromISO(d, { zone: 'America/New_York' }).toFormat('MMM d')
+      luxon.DateTime.fromISO(d, { zone: 'America/New_York' }).toFormat('yyyy-MM-dd')
     );
 
     const hourLabels = [];

@@ -105,6 +105,16 @@ const Config = {
       avatar: 'https://www.banner.yt/UCbCmjCuTUZos6Inko4u57UQ/avatar',
     },
     {
+      id: 'jamiepaige',
+      name: 'Jamie Paige / JamieP',
+      avatar: 'https://www.banner.yt/UCDsaRDKTCsGBJMUKx-KtukA/avatar',
+    },
+    {
+      id: 'flavorfoley',
+      name: 'FLAVOR FOLEY',
+      avatar: 'https://www.banner.yt/UCV5szEvKEntY974aMEfNMEw/avatar',
+    },
+    {
       id: 'ronaldo',
       name: 'UR · Cristiano',
       avatar: 'https://www.banner.yt/UCtxD0x6AuNNqdXO9Wp5GHew/avatar',

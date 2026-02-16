@@ -14,6 +14,7 @@ const Config = {
     rankings: 'https://api.communitrics.com/videos/top10',
     gains: 'https://api.communitrics.com/videos/gains',
     gainsBatch: 'https://api.communitrics.com/videos/gains/batch',
+    gains2026: 'https://api.communitrics.com/videos/gains/since2026',
     listing: 'https://api.communitrics.com/videos/listing',
     hourly: (videoId, channel, startDate, endDate) => {
       let url = `https://api.communitrics.com/videos/hourly/${videoId}?channel=${channel}`;
@@ -3197,6 +3198,9 @@ const Gains = {
   },
 
   async fetch(channelId, metric, filter, period, sortMode = 'absolute') {
+    if (period === 2026) {
+      return this.fetch2026(channelId, metric, filter, sortMode);
+    }
     const cacheKey = `${channelId}-${metric}-${filter}-${period}-${sortMode}`;
     const cached = this.allVideosCache.get(cacheKey);
     if (cached) return cached;
@@ -3214,6 +3218,25 @@ const Gains = {
     );
     this.allVideosCache.set(cacheKey, list);
     return list;
+  },
+
+  async fetch2026(channelId, metric, filter, sortMode) {
+    const cacheKey = `${channelId}-${metric}-${filter}-2026-${sortMode}`;
+    const cached = this.allVideosCache.get(cacheKey);
+    if (cached) return cached;
+
+    const url = `${Config.api.gains2026}?channel=${channelId}&metric=${metric}&filter=${filter}&limit=50&sortMode=${sortMode}`;
+    try {
+      const data = await Net.fetchJson(url, {}, 10 * 60 * 1000);
+      if (data?.videos) {
+        this.allVideosCache.set(cacheKey, data.videos);
+        return data.videos;
+      }
+      return [];
+    } catch (e) {
+      console.error('Gains 2026 fetch error:', e);
+      return [];
+    }
   },
 
   getPeriodKey(period) {
@@ -3241,6 +3264,11 @@ const Gains = {
     if (!videos || !Array.isArray(videos) || videos.length === 0) {
       list.innerHTML =
         '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No gains data available for this selection.</div>';
+      return;
+    }
+
+    if (State.gainsSettings.period === 2026) {
+      this._display2026(videos, count, list);
       return;
     }
 
@@ -3381,6 +3409,86 @@ const Gains = {
       const sortText =
         State.gainsSettings.sortMode === 'percent' ? '% Increase' : 'Total';
       subtitle.textContent = `${metricName} in Last ${periodText} • ${sortText}`;
+    }
+  },
+
+  _display2026(videos, count, list) {
+    let sorted;
+    if (State.gainsSettings.sortMode === 'percent') {
+      sorted = [...videos]
+        .sort((a, b) => {
+          const aPct = a.valueAtStart > 0 ? a.gain / a.valueAtStart : -Infinity;
+          const bPct = b.valueAtStart > 0 ? b.gain / b.valueAtStart : -Infinity;
+          return bPct - aPct;
+        })
+        .slice(0, count);
+    } else {
+      sorted = [...videos].sort((a, b) => b.gain - a.gain).slice(0, count);
+    }
+
+    if (sorted.length === 0) {
+      list.innerHTML =
+        '<div style="text-align:center;padding:40px;color:var(--muted-text-color);">No videos with gains data since 2026.</div>';
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    sorted.forEach((video, index) => {
+      const item = Dom.create('div', 'gains-item');
+      item.dataset.videoId = video.videoId;
+
+      const gain = video.gain;
+      const pct =
+        video.valueAtStart > 0
+          ? ((gain / video.valueAtStart) * 100).toFixed(1)
+          : null;
+
+      const formattedGain = gain.toLocaleString();
+      const formattedCurrent = video.currentValue.toLocaleString();
+
+      item.innerHTML = `
+        <div class="gains-position">${index + 1}</div>
+        <img class="gains-thumbnail" src="${video.thumbnail}" alt="${video.title}"
+          onerror="this.style.display='none'" loading="lazy">
+        <div class="gains-info">
+          <div class="gains-title">${video.title}</div>
+        </div>
+        <div class="gains-stats">
+          <div class="gains-current">
+            +${formattedGain}
+            <span class="gains-period-label">in 2026</span>
+          </div>
+          <div class="gains-change positive">
+            ${formattedCurrent} total
+            ${pct ? `<span class="gains-percentage">(+${pct}%)</span>` : ''}
+          </div>
+        </div>
+      `;
+
+      item.addEventListener('click', () => {
+        Loader.loadVideo(video.videoId, State.currentChannel);
+        const searchInput = Dom.get('searchInput');
+        if (searchInput) searchInput.value = video.title;
+      });
+
+      fragment.appendChild(item);
+    });
+
+    list.appendChild(fragment);
+
+    const heading = document.querySelector('.gains-header h2');
+    if (heading) {
+      heading.textContent = `Top ${State.gainsSettings.count} Video Gains`;
+    }
+
+    const subtitle = document.querySelector('.gains-subtitle');
+    const metricName =
+      State.gainsSettings.metric.charAt(0).toUpperCase() +
+      State.gainsSettings.metric.slice(1);
+    if (subtitle) {
+      const sortText =
+        State.gainsSettings.sortMode === 'percent' ? '% Increase' : 'Total';
+      subtitle.textContent = `${metricName} In 2026 • ${sortText}`;
     }
   },
 
@@ -3639,7 +3747,9 @@ const Export = {
     if (dates.length === 0) return '';
 
     const dateLabels = dates.map(d =>
-      luxon.DateTime.fromISO(d, { zone: 'America/New_York' }).toFormat('yyyy-MM-dd')
+      luxon.DateTime.fromISO(d, { zone: 'America/New_York' }).toFormat(
+        'yyyy-MM-dd'
+      )
     );
 
     const hourLabels = [];

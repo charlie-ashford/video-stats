@@ -91,14 +91,14 @@ const Config = {
       avatar: 'https://www.banner.yt/UC-lHJZR3Gqxm24_Vd_AJ5Yw/avatar',
     },
     {
-      id: 'mark',
-      name: 'Mark Rober',
-      avatar: 'https://www.banner.yt/UCY1kMZp36IQSyNx_9h4mpCg/avatar',
-    },
-    {
       id: 'stokes',
       name: 'Stokes Twins',
       avatar: 'https://www.banner.yt/UCbp9MyKCTEww4CxEzc_Tp0Q/avatar',
+    },
+    {
+      id: 'mark',
+      name: 'Mark Rober',
+      avatar: 'https://www.banner.yt/UCY1kMZp36IQSyNx_9h4mpCg/avatar',
     },
     {
       id: 'cocomelon',
@@ -116,11 +116,6 @@ const Config = {
       avatar: 'https://www.banner.yt/UCV5szEvKEntY974aMEfNMEw/avatar',
     },
     {
-      id: 'ronaldo',
-      name: 'UR · Cristiano',
-      avatar: 'https://www.banner.yt/UCtxD0x6AuNNqdXO9Wp5GHew/avatar',
-    },
-    {
       id: 'sambucha',
       name: 'Sambucha',
       avatar: 'https://www.banner.yt/UCWBWgCD4oAqT3hUeq40SCUw/avatar',
@@ -130,6 +125,11 @@ const Config = {
       name: 'Markiplier',
       avatar: 'https://www.banner.yt/UC7_YxT-KID8kRbqZo7MyscQ/avatar',
     },
+    {
+      id: 'ronaldo',
+      name: 'UR · Cristiano',
+      avatar: 'https://www.banner.yt/UCtxD0x6AuNNqdXO9Wp5GHew/avatar',
+  },
     {
       id: 'blackpink',
       name: 'BLACKPINK',

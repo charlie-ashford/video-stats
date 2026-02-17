@@ -121,6 +121,16 @@ const Config = {
       avatar: 'https://www.banner.yt/UCtxD0x6AuNNqdXO9Wp5GHew/avatar',
     },
     {
+      id: 'sambucha',
+      name: 'Sambucha',
+      avatar: 'https://www.banner.yt/UCWBWgCD4oAqT3hUeq40SCUw/avatar',
+    },
+    {
+      id: 'markiplier',
+      name: 'Markiplier',
+      avatar: 'https://www.banner.yt/UC7_YxT-KID8kRbqZo7MyscQ/avatar',
+    },
+    {
       id: 'blackpink',
       name: 'BLACKPINK',
       avatar: 'https://www.banner.yt/UCOmHUn--16B90oW2L6FRR3A/avatar',

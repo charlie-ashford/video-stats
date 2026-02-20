@@ -129,7 +129,7 @@ const Config = {
       id: 'ronaldo',
       name: 'UR · Cristiano',
       avatar: 'https://www.banner.yt/UCtxD0x6AuNNqdXO9Wp5GHew/avatar',
-  },
+    },
     {
       id: 'blackpink',
       name: 'BLACKPINK',
@@ -361,6 +361,7 @@ const State = {
   hourlyDateRange: { start: null, end: null },
   customDateRange: { start: null, end: null },
   persistedRange: null,
+  statCardsShowPeriodGain: false,
 
   chartModeData: new Map(),
   rankingsSettings: {
@@ -447,6 +448,11 @@ const State = {
       Config.chartModes[Config.defaultChartMode]
     );
   },
+  isBoundedRange() {
+    const cfg = this.getChartConfig();
+    if (this.customDateRange.start && this.customDateRange.end) return true;
+    return cfg.period !== 'all' && typeof cfg.period === 'number';
+  },
   shouldUseHourlyData() {
     const config = this.getChartConfig();
     return config.dataPoints === 'hourly';
@@ -472,6 +478,7 @@ const State = {
     this.isVideosGridView = false;
     this.isRankingsView = false;
     this.isGainsView = false;
+    this.statCardsShowPeriodGain = false;
     this.hourlyData = null;
     this.hourlyDateRange = { start: null, end: null };
     this.customDateRange = { start: null, end: null };
@@ -2540,35 +2547,51 @@ const Charts = {
 };
 
 const Stats = {
+  _setOdometer(el, value) {
+    if (!el) return;
+    if (typeof Odometer !== 'undefined') {
+      try {
+        new Odometer({ el, value }).update(value);
+      } catch (e) {
+        el.textContent = value.toLocaleString();
+      }
+    } else {
+      el.textContent = value.toLocaleString();
+    }
+  },
+
   update() {
     if (!State.processedData.series) return;
     const { views, likes, comments, uploads } = State.processedData.series;
-    const stats = [
-      { id: 'totalViews', value: views[views.length - 1] || 0 },
-      { id: 'totalLikes', value: likes[likes.length - 1] || 0 },
-      { id: 'totalComments', value: comments[comments.length - 1] || 0 },
+
+    const showGain = State.statCardsShowPeriodGain && State.isBoundedRange();
+
+    const metrics = [
+      { id: 'totalViews', series: views },
+      { id: 'totalLikes', series: likes },
+      { id: 'totalComments', series: comments },
     ];
     if (uploads?.length > 0) {
-      stats.push({
-        id: 'totalUploads',
-        value: uploads[uploads.length - 1] || 0,
-      });
+      metrics.push({ id: 'totalUploads', series: uploads });
       Dom.show('uploadCountCard');
     } else {
       Dom.hide('uploadCountCard');
     }
-    stats.forEach(stat => {
-      const el = Dom.get(stat.id);
-      if (el) {
-        if (typeof Odometer !== 'undefined') {
-          try {
-            new Odometer({ el, value: stat.value }).update(stat.value);
-          } catch (e) {
-            el.textContent = stat.value.toLocaleString();
-          }
+
+    metrics.forEach(m => {
+      const el = Dom.get(m.id);
+      const total = m.series[m.series.length - 1] || 0;
+
+      if (showGain) {
+        const first = m.series[0] || 0;
+        const gain = total - first;
+        if (gain < 0) {
+          if (el) el.textContent = gain.toLocaleString();
         } else {
-          el.textContent = stat.value.toLocaleString();
+          this._setOdometer(el, gain);
         }
+      } else {
+        this._setOdometer(el, total);
       }
     });
 
@@ -5597,6 +5620,11 @@ const ChartModeDropdown = {
       State.isHourlyGainsMode = false;
     }
 
+    const modeConfig = Config.chartModes[mode];
+    if (modeConfig && modeConfig.period === 'all') {
+      State.statCardsShowPeriodGain = false;
+    }
+
     State.isHourlyMode = false;
     State.hourlyData = null;
 
@@ -5605,18 +5633,16 @@ const ChartModeDropdown = {
     this.updateGainsToggleUI();
     this.updateGainsToggleVisibility();
 
-    const config = Config.chartModes[mode];
+    const config = modeConfig;
 
     if (CombinedMetricsFilter.state.filterMode !== 'all') {
       await CombinedMetricsFilter.refresh();
-      return;
-    }
-
-    if (config.dataPoints === 'hourly-chart') {
+    } else if (config.dataPoints === 'hourly-chart') {
       await this.loadHourlyChart();
     } else {
       await this.loadAndDisplayData();
     }
+    Stats.update();
   },
 
   updateGainsToggleUI() {
@@ -5708,6 +5734,12 @@ const ChartModeDropdown = {
     } else {
       State.isGainsMode = false;
       State.isHourlyGainsMode = false;
+    }
+
+    if (State.isBoundedRange()) {
+      State.statCardsShowPeriodGain =
+        State.isGainsMode || State.isHourlyGainsMode;
+      Stats.update();
     }
 
     this.updateGainsToggleUI();
@@ -5909,6 +5941,7 @@ const ChartModeDropdown = {
     State.isGainsMode = false;
     State.isHourlyGainsMode = false;
     State.isHourlyMode = false;
+    State.statCardsShowPeriodGain = false;
     State.hourlyData = null;
     State.hourlyDateRange = { start: null, end: null };
     State.customDateRange = { start: null, end: null };
@@ -7300,26 +7333,43 @@ const MetricCards = {
       3: this.faded(Config.colors.uploads),
     };
 
+    let clickTimer = null;
+
     cards.forEach((card, index) => {
-      card.addEventListener('click', async () => {
-        cards.forEach(c => {
-          c.classList.remove('active');
-          c.style.removeProperty('--active-card-color');
-        });
-        card.classList.add('active');
-        card.style.setProperty('--active-card-color', this.colors[index]);
-
-        State.selectedMetricIndex = index;
-
-        ChartModeDropdown.show();
-        const didChangeMode = await ChartModeDropdown.refresh();
-        if (!didChangeMode) {
-          if (CombinedMetricsFilter.state.filterMode !== 'all') {
-            await CombinedMetricsFilter.refresh();
-          } else {
-            Charts.create({ animate: true });
-          }
+      card.addEventListener('click', () => {
+        if (clickTimer) {
+          clearTimeout(clickTimer);
+          clickTimer = null;
+          return;
         }
+        clickTimer = setTimeout(async () => {
+          clickTimer = null;
+          cards.forEach(c => {
+            c.classList.remove('active');
+            c.style.removeProperty('--active-card-color');
+          });
+          card.classList.add('active');
+          card.style.setProperty('--active-card-color', this.colors[index]);
+
+          State.selectedMetricIndex = index;
+
+          ChartModeDropdown.show();
+          const didChangeMode = await ChartModeDropdown.refresh();
+          if (!didChangeMode) {
+            if (CombinedMetricsFilter.state.filterMode !== 'all') {
+              await CombinedMetricsFilter.refresh();
+            } else {
+              Charts.create({ animate: true });
+            }
+          }
+        }, 250);
+      });
+
+      card.addEventListener('dblclick', e => {
+        e.preventDefault();
+        if (!State.isBoundedRange()) return;
+        State.statCardsShowPeriodGain = !State.statCardsShowPeriodGain;
+        Stats.update();
       });
     });
 
